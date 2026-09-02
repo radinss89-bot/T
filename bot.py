@@ -14,7 +14,7 @@ TOKEN = os.environ["BOT_TOKEN"]
 ADMIN_ID = 6235380364
 
 COINS_PER_MESSAGE = 10
-COOLDOWN = 5 * 60
+COOLDOWN = 2 * 60
 
 
 def get_db():

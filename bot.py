@@ -10,7 +10,7 @@ from telegram.ext import (
     filters,
 )
 
-TOKEN = os.environ["8594435724:AAFgGqnBbxzst3c2K1L6jBf3vh2wHWna0OA"]
+TOKEN = os.environ["BOT_TOKEN"]
 ADMIN_ID = 6235380364
 
 COINS_PER_MESSAGE = 10

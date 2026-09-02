@@ -5,8 +5,8 @@ import psycopg2
 
 from telegram import (
     Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
     WebAppInfo,
 )
 
@@ -24,14 +24,12 @@ from telegram.ext import (
 # =========================
 
 TOKEN = os.environ["BOT_TOKEN"]
-
 ADMIN_ID = 6235380364
 
 COINS_PER_MESSAGE = 10
 COOLDOWN = 2 * 60
 
 GAME_URL = "https://t-pk89.onrender.com/"
-
 COINS_PER_GAME_SCORE = 5
 
 
@@ -40,16 +38,13 @@ COINS_PER_GAME_SCORE = 5
 # =========================
 
 def get_db():
-    return psycopg2.connect(
-        os.environ["DATABASE_URL"]
-    )
+    return psycopg2.connect(os.environ["DATABASE_URL"])
 
 
 def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # Users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -59,7 +54,6 @@ def init_db():
         )
     """)
 
-    # Game scores
     cur.execute("""
         CREATE TABLE IF NOT EXISTS game_scores (
             user_id BIGINT PRIMARY KEY,
@@ -70,7 +64,6 @@ def init_db():
         )
     """)
 
-    # جلوگیری از ثبت دوباره یک game_id
     cur.execute("""
         CREATE TABLE IF NOT EXISTS game_results (
             game_id TEXT PRIMARY KEY,
@@ -82,7 +75,6 @@ def init_db():
     """)
 
     conn.commit()
-
     cur.close()
     conn.close()
 
@@ -92,31 +84,23 @@ def init_db():
 # =========================
 
 def get_user(user_id, name):
-
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(
-        """
+    cur.execute("""
         SELECT coins, last_message
         FROM users
         WHERE user_id = %s
-        """,
-        (user_id,)
-    )
+    """, (user_id,))
 
     row = cur.fetchone()
 
     if row is None:
-
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO users
             (user_id, name, coins, last_message)
             VALUES (%s, %s, 0, 0)
-            """,
-            (user_id, name)
-        )
+        """, (user_id, name))
 
         conn.commit()
 
@@ -124,7 +108,6 @@ def get_user(user_id, name):
         last = 0
 
     else:
-
         coins, last = row
 
     cur.close()
@@ -133,18 +116,11 @@ def get_user(user_id, name):
     return coins, last
 
 
-def update_user(
-    user_id,
-    name,
-    coins,
-    last
-):
-
+def update_user(user_id, name, coins, last):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute(
-        """
+    cur.execute("""
         INSERT INTO users
         (user_id, name, coins, last_message)
         VALUES (%s, %s, %s, %s)
@@ -154,14 +130,12 @@ def update_user(
             name = EXCLUDED.name,
             coins = EXCLUDED.coins,
             last_message = EXCLUDED.last_message
-        """,
-        (
-            user_id,
-            name,
-            coins,
-            last
-        )
-    )
+    """, (
+        user_id,
+        name,
+        coins,
+        last
+    ))
 
     conn.commit()
 
@@ -170,13 +144,10 @@ def update_user(
 
 
 # =========================
-# MESSAGE → COINS
+# فولک
 # =========================
 
-async def message_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = update.message
 
@@ -225,10 +196,7 @@ async def message_handler(
 # BALANCE
 # =========================
 
-async def balance(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.effective_user:
         return
@@ -254,10 +222,7 @@ async def balance(
 # TOP COINS
 # =========================
 
-async def top(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
@@ -309,19 +274,14 @@ async def top(
             f"{coins} 🪙\n"
         )
 
-    await update.message.reply_text(
-        text
-    )
+    await update.message.reply_text(text)
 
 
 # =========================
-# GAME LEADERBOARD
+# GAME TOP
 # =========================
 
-async def gametop(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def gametop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
@@ -373,26 +333,21 @@ async def gametop(
             f"{score} امتیاز\n"
         )
 
-    await update.message.reply_text(
-        text
-    )
+    await update.message.reply_text(text)
 
 
 # =========================
-# START
+# START + MINI APP
 # =========================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
 
     keyboard = [
         [
-            InlineKeyboardButton(
+            KeyboardButton(
                 "🎮 بازی Subway Bird",
                 web_app=WebAppInfo(
                     url=GAME_URL
@@ -401,11 +356,13 @@ async def start(
         ]
     ]
 
-    reply_markup = InlineKeyboardMarkup(
-        keyboard
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True
     )
 
     await update.message.reply_text(
+
         "🤖 ربات کوین فعاله!\n\n"
 
         "🎮 Subway Bird\n"
@@ -426,7 +383,7 @@ async def start(
 
 
 # =========================
-# WEB APP DATA
+# RECEIVE GAME SCORE
 # =========================
 
 async def web_app_data(
@@ -452,10 +409,25 @@ async def web_app_data(
 
     raw_data = message.web_app_data.data
 
+    print(
+        "GAME DATA RECEIVED:",
+        raw_data
+    )
+
+    # -------------------------
+    # JSON
+    # -------------------------
+
     try:
-        data = json.loads(raw_data)
 
-    except (json.JSONDecodeError, TypeError):
+        data = json.loads(
+            raw_data
+        )
+
+    except (
+        json.JSONDecodeError,
+        TypeError
+    ):
 
         await message.reply_text(
             "❌ اطلاعات بازی نامعتبر است."
@@ -464,26 +436,34 @@ async def web_app_data(
         return
 
     # -------------------------
-    # دریافت اطلاعات بازی
+    # ACTION
     # -------------------------
 
-    action = data.get("action")
-
-    if action != "game_over":
+    if data.get("action") != "game_over":
 
         await message.reply_text(
             "❌ اطلاعات بازی نامعتبر است."
         )
 
         return
+
+    # -------------------------
+    # SCORE
+    # -------------------------
 
     try:
 
         score = int(
-            data.get("score", 0)
+            data.get(
+                "score",
+                0
+            )
         )
 
-    except (TypeError, ValueError):
+    except (
+        TypeError,
+        ValueError
+    ):
 
         await message.reply_text(
             "❌ امتیاز نامعتبر است."
@@ -491,12 +471,8 @@ async def web_app_data(
 
         return
 
-    game_id = str(
-        data.get("game_id", "")
-    ).strip()
-
     # -------------------------
-    # Validation
+    # CHECK SCORE
     # -------------------------
 
     if score < 0:
@@ -507,7 +483,6 @@ async def web_app_data(
 
         return
 
-    # جلوگیری از عددهای خیلی بزرگ
     if score > 100000:
 
         await message.reply_text(
@@ -515,6 +490,17 @@ async def web_app_data(
         )
 
         return
+
+    # -------------------------
+    # GAME ID
+    # -------------------------
+
+    game_id = str(
+        data.get(
+            "game_id",
+            ""
+        )
+    ).strip()
 
     if not game_id:
 
@@ -524,24 +510,24 @@ async def web_app_data(
 
         return
 
-    # -------------------------
-    # Database transaction
-    # -------------------------
+    # =========================
+    # DATABASE TRANSACTION
+    # =========================
 
     conn = get_db()
     cur = conn.cursor()
 
     try:
 
-        # بررسی اینکه این بازی قبلاً ثبت شده یا نه
-        cur.execute(
-            """
+        # Check duplicate game
+
+        cur.execute("""
             SELECT 1
             FROM game_results
             WHERE game_id = %s
-            """,
-            (game_id,)
-        )
+        """, (
+            game_id,
+        ))
 
         already_exists = cur.fetchone()
 
@@ -555,18 +541,22 @@ async def web_app_data(
 
             return
 
+        # -------------------------
+        # COINS
+        # -------------------------
+
         coins_awarded = (
-            score * COINS_PER_GAME_SCORE
+            score *
+            COINS_PER_GAME_SCORE
         )
 
         now = time.time()
 
         # -------------------------
-        # ثبت نتیجه بازی
+        # SAVE GAME
         # -------------------------
 
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO game_results
             (
                 game_id,
@@ -575,23 +565,27 @@ async def web_app_data(
                 coins_awarded,
                 created_at
             )
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (
-                game_id,
-                user_id,
-                score,
-                coins_awarded,
-                now
+
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
             )
-        )
+        """, (
+            game_id,
+            user_id,
+            score,
+            coins_awarded,
+            now
+        ))
 
         # -------------------------
-        # ثبت/آپدیت رکورد بازی
+        # SAVE RECORD
         # -------------------------
 
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO game_scores
             (
                 user_id,
@@ -600,34 +594,45 @@ async def web_app_data(
                 games_played,
                 best_score
             )
-            VALUES (%s, %s, %s, 1, %s)
+
+            VALUES (
+                %s,
+                %s,
+                %s,
+                1,
+                %s
+            )
 
             ON CONFLICT (user_id)
+
             DO UPDATE SET
-                name = EXCLUDED.name,
-                score = EXCLUDED.score,
+
+                name =
+                    EXCLUDED.name,
+
+                score =
+                    EXCLUDED.score,
+
                 games_played =
                     game_scores.games_played + 1,
+
                 best_score =
                     GREATEST(
                         game_scores.best_score,
                         EXCLUDED.score
                     )
-            """,
-            (
-                user_id,
-                name,
-                score,
-                score
-            )
-        )
+        """, (
+            user_id,
+            name,
+            score,
+            score
+        ))
 
         # -------------------------
-        # اضافه کردن کوین
+        # ADD COINS
         # -------------------------
 
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO users
             (
                 user_id,
@@ -635,21 +640,29 @@ async def web_app_data(
                 coins,
                 last_message
             )
-            VALUES (%s, %s, %s, 0)
+
+            VALUES (
+                %s,
+                %s,
+                %s,
+                0
+            )
 
             ON CONFLICT (user_id)
+
             DO UPDATE SET
-                name = EXCLUDED.name,
+
+                name =
+                    EXCLUDED.name,
+
                 coins =
                     users.coins
                     + EXCLUDED.coins
-            """,
-            (
-                user_id,
-                name,
-                coins_awarded
-            )
-        )
+        """, (
+            user_id,
+            name,
+            coins_awarded
+        ))
 
         conn.commit()
 
@@ -673,15 +686,21 @@ async def web_app_data(
         cur.close()
         conn.close()
 
-    # -------------------------
-    # پاسخ به بازیکن
-    # -------------------------
+    # =========================
+    # SUCCESS
+    # =========================
 
     await message.reply_text(
+
         f"🎮 بازی تموم شد!\n\n"
+
         f"🏆 امتیاز: {score}\n"
-        f"🪙 جایزه: +{coins_awarded} کوین\n\n"
-        f"🎯 رکوردت رو با /gametop ببین!"
+
+        f"🪙 جایزه: "
+        f"+{coins_awarded} کوین\n\n"
+
+        f"🎯 رکوردت رو با "
+        f"/gametop ببین!"
     )
 
 
@@ -968,7 +987,7 @@ def main():
         )
     )
 
-    # Web App result
+    # Mini App data
 
     app.add_handler(
         MessageHandler(
@@ -977,12 +996,11 @@ def main():
         )
     )
 
-    # Normal text messages
+    # فولک
 
     app.add_handler(
         MessageHandler(
-            filters.TEXT
-            & ~filters.COMMAND,
+            filters.TEXT & ~filters.COMMAND,
             message_handler
         )
     )
@@ -993,6 +1011,10 @@ def main():
 
     app.run_polling()
 
+
+# =========================
+# RUN
+# =========================
 
 if __name__ == "__main__":
     main()

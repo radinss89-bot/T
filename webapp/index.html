@@ -1,245 +1,521 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-
 <meta charset="UTF-8">
 
 <meta name="viewport"
-content="width=device-width,
-initial-scale=1.0,
-maximum-scale=1.0,
-user-scalable=no">
+      content="width=device-width,
+      initial-scale=1.0,
+      maximum-scale=1.0,
+      user-scalable=no">
 
-<title>Beta Bird</title>
+<title>Subway Bird</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 
 <style>
 
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    touch-action:none;
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-body{
-    overflow:hidden;
-    background:#eee;
-    font-family:Arial,sans-serif;
+html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: white;
+    font-family: Arial, sans-serif;
 }
 
-#game{
-    display:block;
-    width:100vw;
-    height:100vh;
+#game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: white;
 }
-
 
 /* =========================
-   امتیاز
+   ROAD
 ========================= */
 
-#scoreBox{
+#road {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
 
-    position:fixed;
+    width: min(100vw, 520px);
+    height: 100%;
 
-    top:15px;
-    left:15px;
+    background: #d8d8d8;
 
-    z-index:5;
-
-    background:white;
-
-    border:3px solid #222;
-
-    border-radius:10px;
-
-    padding:7px 13px;
-
-    color:#222;
-
-    font-size:18px;
-
-    font-weight:bold;
-
-    line-height:1.5;
+    border-left: 5px solid #555;
+    border-right: 5px solid #555;
 }
 
+.lane-line {
+    position: absolute;
+
+    top: 0;
+
+    width: 4px;
+    height: 100%;
+
+    background:
+        repeating-linear-gradient(
+            to bottom,
+            #888 0px,
+            #888 35px,
+            transparent 35px,
+            transparent 70px
+        );
+}
+
+#line1 {
+    left: 33.333%;
+}
+
+#line2 {
+    left: 66.666%;
+}
 
 /* =========================
-   کنترل
+   SCORE
 ========================= */
 
-#controls{
+#scoreBox {
+    position: absolute;
 
-    position:fixed;
+    top: 15px;
+    left: 50%;
 
-    bottom:25px;
+    transform: translateX(-50%);
 
-    left:0;
-    right:0;
+    z-index: 50;
 
-    display:flex;
+    padding: 7px 18px;
 
-    justify-content:center;
+    background: white;
 
-    gap:35px;
+    border: 3px solid #222;
+    border-radius: 12px;
 
-    z-index:10;
+    font-size: 21px;
+    font-weight: bold;
 }
 
+#bestBox {
+    position: absolute;
 
-.btn{
+    top: 64px;
+    left: 50%;
 
-    width:75px;
-    height:75px;
+    transform: translateX(-50%);
 
-    border-radius:50%;
+    z-index: 50;
 
-    border:3px solid #222;
+    font-size: 14px;
+    font-weight: bold;
 
-    background:white;
-
-    color:#222;
-
-    display:flex;
-
-    align-items:center;
-    justify-content:center;
-
-    font-size:35px;
-
-    font-weight:bold;
-
-    user-select:none;
-
+    color: #333;
 }
 
+/* =========================
+   ANGRY BIRD
+========================= */
 
-.btn:active{
+#player {
+    position: absolute;
 
-    background:#222;
+    width: 62px;
+    height: 62px;
 
-    color:white;
+    z-index: 20;
 
+    transform: translateX(-50%);
+
+    transition: left 0.12s ease;
 }
 
+/* بدن قرمز */
+
+.bird {
+    position: absolute;
+
+    width: 62px;
+    height: 62px;
+
+    background: #e00000;
+
+    border: 4px solid #111;
+
+    border-radius:
+        50% 50%
+        45% 45%;
+}
+
+/* ابروی چپ */
+
+.brow-left {
+    position: absolute;
+
+    width: 25px;
+    height: 8px;
+
+    background: #111;
+
+    left: 7px;
+    top: 11px;
+
+    transform: rotate(18deg);
+
+    border-radius: 5px;
+
+    z-index: 5;
+}
+
+/* ابروی راست */
+
+.brow-right {
+    position: absolute;
+
+    width: 25px;
+    height: 8px;
+
+    background: #111;
+
+    right: 7px;
+    top: 11px;
+
+    transform: rotate(-18deg);
+
+    border-radius: 5px;
+
+    z-index: 5;
+}
+
+/* چشم‌ها */
+
+.eye {
+    position: absolute;
+
+    width: 17px;
+    height: 17px;
+
+    background: white;
+
+    border: 3px solid #111;
+
+    border-radius: 50%;
+
+    top: 20px;
+
+    z-index: 4;
+}
+
+.eye::after {
+    content: "";
+
+    position: absolute;
+
+    width: 6px;
+    height: 6px;
+
+    background: #111;
+
+    border-radius: 50%;
+
+    left: 3px;
+    top: 3px;
+}
+
+.eye-left {
+    left: 11px;
+}
+
+.eye-right {
+    right: 11px;
+}
+
+/* منقار */
+
+.beak {
+    position: absolute;
+
+    left: 50%;
+    top: 31px;
+
+    transform: translateX(-50%);
+
+    width: 0;
+    height: 0;
+
+    border-left: 14px solid transparent;
+    border-right: 14px solid transparent;
+
+    border-top: 20px solid #f2a900;
+
+    filter: drop-shadow(
+        0 3px 0 #111
+    );
+
+    z-index: 8;
+}
+
+/* قسمت بالای سر */
+
+.hair-left {
+    position: absolute;
+
+    width: 18px;
+    height: 18px;
+
+    background: #111;
+
+    left: 13px;
+    top: -7px;
+
+    transform: rotate(-35deg);
+
+    border-radius: 4px;
+
+    z-index: 1;
+}
+
+.hair-right {
+    position: absolute;
+
+    width: 18px;
+    height: 18px;
+
+    background: #111;
+
+    right: 13px;
+    top: -7px;
+
+    transform: rotate(35deg);
+
+    border-radius: 4px;
+
+    z-index: 1;
+}
+
+/* =========================
+   COIN
+========================= */
+
+.coin {
+    position: absolute;
+
+    width: 31px;
+    height: 31px;
+
+    border-radius: 50%;
+
+    background: white;
+
+    border: 4px solid #222;
+
+    z-index: 10;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 15px;
+    font-weight: bold;
+}
+
+/* =========================
+   OBSTACLE
+========================= */
+
+.obstacle {
+    position: absolute;
+
+    width: 50px;
+    height: 50px;
+
+    background: #777;
+
+    border: 4px solid #222;
+
+    border-radius: 8px;
+
+    z-index: 8;
+}
+
+/* =========================
+   BUTTONS
+========================= */
+
+#controls {
+    position: absolute;
+
+    bottom: 24px;
+    left: 50%;
+
+    transform: translateX(-50%);
+
+    z-index: 60;
+
+    display: flex;
+
+    gap: 20px;
+}
+
+.control {
+    width: 72px;
+    height: 55px;
+
+    background: white;
+
+    border: 3px solid #222;
+
+    border-radius: 12px;
+
+    font-size: 30px;
+    font-weight: bold;
+}
+
+.control:active {
+    background: #ddd;
+    transform: scale(.93);
+}
 
 /* =========================
    GAME OVER
 ========================= */
 
-#gameOver{
+#gameOver {
+    position: absolute;
 
-    position:fixed;
+    inset: 0;
 
-    inset:0;
+    z-index: 100;
 
-    background:rgba(255,255,255,.95);
+    display: none;
 
-    display:none;
+    align-items: center;
+    justify-content: center;
 
-    align-items:center;
+    flex-direction: column;
 
-    justify-content:center;
+    background: rgba(255,255,255,.94);
 
-    flex-direction:column;
-
-    z-index:20;
-
+    text-align: center;
 }
 
-
-#gameOver h1{
-
-    font-size:40px;
-
-    margin-bottom:15px;
-
+#gameOver h1 {
+    font-size: 38px;
+    margin-bottom: 15px;
 }
 
-
-.result{
-
-    font-size:21px;
-
-    margin:5px;
-
+#finalScore {
+    font-size: 22px;
+    margin-bottom: 10px;
 }
 
+#reward {
+    font-size: 18px;
+    margin-bottom: 25px;
+}
 
-#restart{
+#restart {
+    padding: 12px 30px;
 
-    margin-top:20px;
+    background: white;
 
-    padding:13px 28px;
+    border: 3px solid #222;
 
-    border:3px solid #222;
+    border-radius: 12px;
 
-    border-radius:10px;
-
-    background:#222;
-
-    color:white;
-
-    font-size:18px;
-
+    font-size: 20px;
+    font-weight: bold;
 }
 
 </style>
-
 </head>
-
 
 <body>
 
+<div id="game">
 
-<canvas id="game"></canvas>
+    <div id="road">
 
+        <div id="line1" class="lane-line"></div>
+        <div id="line2" class="lane-line"></div>
 
-<div id="scoreBox">
+        <!-- ANGRY BIRD -->
 
-    🪙 <span id="score">0</span>
+        <div id="player">
 
-    <br>
+            <div class="bird"></div>
 
-    🏆 رکورد:
-    <span id="best">0</span>
+            <div class="hair-left"></div>
+            <div class="hair-right"></div>
 
-</div>
+            <div class="brow-left"></div>
+            <div class="brow-right"></div>
 
+            <div class="eye eye-left"></div>
+            <div class="eye eye-right"></div>
 
-<div id="controls">
+            <div class="beak"></div>
 
-    <div class="btn" id="left">
-        ←
+        </div>
+
     </div>
 
-    <div class="btn" id="right">
-        →
+
+    <div id="scoreBox">
+        🏆 <span id="score">0</span>
     </div>
 
-</div>
-
-
-<div id="gameOver">
-
-    <h1>
-        GAME OVER
-    </h1>
-
-    <div class="result">
-        🪙 امتیاز:
-        <span id="finalScore">0</span>
+    <div id="bestBox">
+        رکورد: <span id="best">0</span>
     </div>
 
-    <div class="result">
-        🏆 رکورد:
-        <span id="finalBest">0</span>
+
+    <div id="controls">
+
+        <button
+            class="control"
+            id="left">
+            ◀
+        </button>
+
+        <button
+            class="control"
+            id="right">
+            ▶
+        </button>
+
     </div>
 
-    <button id="restart">
-        دوباره بازی
-    </button>
+
+    <div id="gameOver">
+
+        <h1>GAME OVER</h1>
+
+        <div id="finalScore">
+            امتیاز: 0
+        </div>
+
+        <div id="reward">
+            🪙 جایزه: +0 کوین
+        </div>
+
+        <button id="restart">
+            دوباره بازی
+        </button>
+
+    </div>
 
 </div>
 
@@ -247,1193 +523,618 @@ body{
 <script>
 
 /* =========================
-   Telegram Mini App
+   TELEGRAM
 ========================= */
 
-const tg =
-    window.Telegram &&
-    window.Telegram.WebApp
-    ? window.Telegram.WebApp
-    : null;
+const tg = window.Telegram.WebApp;
 
-
-if(tg){
-
-    tg.ready();
-
-    tg.expand();
-
-}
+tg.ready();
+tg.expand();
 
 
 /* =========================
-   Canvas
+   ELEMENTS
 ========================= */
 
-const canvas =
+const game =
     document.getElementById("game");
 
-const ctx =
-    canvas.getContext("2d");
+const road =
+    document.getElementById("road");
 
+const player =
+    document.getElementById("player");
 
-function resize(){
+const scoreElement =
+    document.getElementById("score");
 
-    canvas.width =
-        window.innerWidth;
+const bestElement =
+    document.getElementById("best");
 
-    canvas.height =
-        window.innerHeight;
+const gameOverScreen =
+    document.getElementById("gameOver");
 
-}
+const finalScore =
+    document.getElementById("finalScore");
 
+const reward =
+    document.getElementById("reward");
 
-resize();
-
-
-window.addEventListener(
-    "resize",
-    resize
-);
+const restart =
+    document.getElementById("restart");
 
 
 /* =========================
-   بازی
+   VARIABLES
 ========================= */
+
+let lane = 1;
 
 let score = 0;
-
-let gameRunning = true;
-
-
-/* =========================
-   رکورد
-========================= */
 
 let bestScore =
     Number(
         localStorage.getItem(
-            "betaBirdBest"
+            "subwayBirdBest"
         )
     ) || 0;
 
+let objects = [];
 
-document
-    .getElementById("best")
-    .textContent =
-    bestScore;
+let gameRunning = true;
+
+let lastSpawn = 0;
+
+let speed = 4;
+
+let animation;
 
 
 /* =========================
-   سه لاین
+   LANE
 ========================= */
 
-let currentLane = 1;
-
-
-/*
-0 = چپ
-1 = وسط
-2 = راست
-*/
-
-
-function getLaneX(lane){
-
-    const roadLeft = 25;
-
-    const roadWidth =
-        canvas.width - 50;
+function getLaneX(number) {
 
     const laneWidth =
-        roadWidth / 3;
+        road.clientWidth / 3;
 
     return (
-        roadLeft +
-        laneWidth * lane +
+        laneWidth * number +
         laneWidth / 2
     );
-
 }
 
 
 /* =========================
-   پرنده
+   PLAYER
 ========================= */
 
-const bird = {
+function updatePlayer() {
 
-    size:58,
+    player.style.left =
+        getLaneX(lane) + "px";
 
-    y:
-        canvas.height - 190,
-
-    x:0,
-
-    targetX:0,
-
-    moveSpeed:.25
-
-};
-
-
-function updateBirdLane(){
-
-    bird.targetX =
-        getLaneX(
-            currentLane
-        )
-        -
-        bird.size / 2;
-
+    player.style.top =
+        (
+            window.innerHeight - 155
+        ) + "px";
 }
 
-
-updateBirdLane();
-
-bird.x =
-    bird.targetX;
+updatePlayer();
 
 
 /* =========================
-   تغییر لاین
+   MOVEMENT
 ========================= */
 
-function moveLeft(){
+function moveLeft() {
 
-    if(!gameRunning)
+    if (!gameRunning)
         return;
 
-    if(currentLane > 0){
+    if (lane > 0) {
 
-        currentLane--;
+        lane--;
 
-        updateBirdLane();
-
+        updatePlayer();
     }
-
 }
 
 
-function moveRight(){
+function moveRight() {
 
-    if(!gameRunning)
+    if (!gameRunning)
         return;
 
-    if(currentLane < 2){
+    if (lane < 2) {
 
-        currentLane++;
+        lane++;
 
-        updateBirdLane();
-
+        updatePlayer();
     }
-
 }
 
 
 /* =========================
-   کنترل موبایل
+   BUTTONS
 ========================= */
 
 document
     .getElementById("left")
     .addEventListener(
-        "touchstart",
-        function(e){
-
-            e.preventDefault();
-
-            moveLeft();
-
-        }
+        "click",
+        moveLeft
     );
-
 
 document
     .getElementById("right")
     .addEventListener(
-        "touchstart",
-        function(e){
-
-            e.preventDefault();
-
-            moveRight();
-
-        }
+        "click",
+        moveRight
     );
 
 
 /* =========================
-   کنترل کامپیوتر
+   KEYBOARD
 ========================= */
 
 document.addEventListener(
     "keydown",
-    function(e){
+    function(e) {
 
-        if(e.repeat)
-            return;
-
-        if(e.key === "ArrowLeft")
+        if (
+            e.key ===
+            "ArrowLeft"
+        ) {
             moveLeft();
+        }
 
-        if(e.key === "ArrowRight")
+        if (
+            e.key ===
+            "ArrowRight"
+        ) {
             moveRight();
+        }
 
     }
 );
 
 
 /* =========================
-   سکه‌ها
+   SWIPE
 ========================= */
 
-let coins = [];
+let touchStartX = 0;
 
+game.addEventListener(
+    "touchstart",
+    function(e) {
 
-function spawnCoin(){
-
-    const lane =
-        Math.floor(
-            Math.random() * 3
-        );
-
-
-    coins.push({
-
-        lane:lane,
-
-        x:getLaneX(lane),
-
-        y:-30,
-
-        radius:13,
-
-        speed:5
-
-    });
-
-}
-
-
-/* =========================
-   موانع
-========================= */
-
-let obstacles = [];
-
-
-function spawnObstacle(){
-
-    const lane =
-        Math.floor(
-            Math.random() * 3
-        );
-
-
-    obstacles.push({
-
-        lane:lane,
-
-        x:getLaneX(lane),
-
-        y:-50,
-
-        size:42,
-
-        speed:5
-
-    });
-
-}
-
-
-/* =========================
-   تولید
-========================= */
-
-setInterval(
-
-    function(){
-
-        if(gameRunning)
-            spawnCoin();
-
-    },
-
-    650
-
+        touchStartX =
+            e.touches[0].clientX;
+    }
 );
 
 
-setInterval(
+game.addEventListener(
+    "touchend",
+    function(e) {
 
-    function(){
+        const endX =
+            e.changedTouches[0].clientX;
 
-        if(gameRunning)
-            spawnObstacle();
+        const diff =
+            endX - touchStartX;
 
-    },
+        if (
+            Math.abs(diff) < 30
+        )
+            return;
 
-    1100
+        if (diff < 0) {
 
-);
+            moveLeft();
 
+        } else {
 
-/* =========================
-   مسیر
-========================= */
-
-function drawRoad(){
-
-    /*
-    پس زمینه
-    */
-
-    ctx.fillStyle="#eee";
-
-    ctx.fillRect(
-
-        0,
-        0,
-
-        canvas.width,
-        canvas.height
-
-    );
-
-
-    /*
-    جاده
-    */
-
-    ctx.fillStyle="#ccc";
-
-    ctx.fillRect(
-
-        25,
-        0,
-
-        canvas.width-50,
-        canvas.height
-
-    );
-
-
-    /*
-    دیواره‌ها
-    */
-
-    ctx.fillStyle="#888";
-
-
-    ctx.fillRect(
-
-        20,
-        0,
-
-        5,
-        canvas.height
-
-    );
-
-
-    ctx.fillRect(
-
-        canvas.width-25,
-        0,
-
-        5,
-        canvas.height
-
-    );
-
-
-    /*
-    خطوط سه لاین
-    */
-
-    const laneWidth =
-        (canvas.width-50)/3;
-
-
-    ctx.fillStyle="#fff";
-
-
-    for(
-        let i=1;
-        i<3;
-        i++
-    ){
-
-        const x =
-            25 +
-            laneWidth*i;
-
-
-        for(
-            let y=-100;
-            y<canvas.height;
-            y+=95
-        ){
-
-            ctx.fillRect(
-
-                x-3,
-                y,
-                6,
-                55
-
-            );
+            moveRight();
 
         }
 
     }
-
-}
+);
 
 
 /* =========================
-   پرنده قرمز
-   نمای بالا
+   COIN
 ========================= */
 
-function drawBird(){
+function createCoin() {
 
-    /*
-    حرکت نرم
-    */
+    const coin =
+        document.createElement("div");
 
-    bird.x +=
+    coin.className = "coin";
+
+    coin.textContent = "●";
+
+    const coinLane =
+        Math.floor(
+            Math.random() * 3
+        );
+
+    coin.style.left =
         (
-            bird.targetX -
-            bird.x
-        )
-        *
-        bird.moveSpeed;
+            getLaneX(coinLane) - 15
+        ) + "px";
 
+    coin.style.top =
+        "-40px";
 
-    const x =
-        bird.x;
+    road.appendChild(coin);
 
-    const y =
-        bird.y;
+    objects.push({
 
-    const s =
-        bird.size;
+        element: coin,
 
+        type: "coin",
 
-    ctx.save();
+        lane: coinLane,
 
+        y: -40
 
-    ctx.translate(
-
-        x+s/2,
-        y+s/2
-
-    );
-
-
-    /*
-    بدن قرمز
-    */
-
-    ctx.beginPath();
-
-    ctx.arc(
-
-        0,
-        0,
-
-        s/2,
-
-        0,
-        Math.PI*2
-
-    );
-
-
-    ctx.fillStyle="#d22";
-
-    ctx.fill();
-
-
-    ctx.lineWidth=4;
-
-    ctx.strokeStyle="#222";
-
-    ctx.stroke();
-
-
-    /*
-    پرهای سر
-    */
-
-    ctx.fillStyle="#222";
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        -15,
-        -25
-    );
-
-    ctx.lineTo(
-        -5,
-        -40
-    );
-
-    ctx.lineTo(
-        2,
-        -25
-    );
-
-    ctx.fill();
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        2,
-        -25
-    );
-
-    ctx.lineTo(
-        12,
-        -40
-    );
-
-    ctx.lineTo(
-        17,
-        -22
-    );
-
-    ctx.fill();
-
-
-    /*
-    چشم‌ها
-    */
-
-    ctx.fillStyle="white";
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-        -11,
-        -8,
-        8,
-        0,
-        Math.PI*2
-    );
-
-    ctx.fill();
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-        11,
-        -8,
-        8,
-        0,
-        Math.PI*2
-    );
-
-    ctx.fill();
-
-
-    /*
-    مردمک
-    */
-
-    ctx.fillStyle="#222";
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-        -11,
-        -7,
-        4,
-        0,
-        Math.PI*2
-    );
-
-    ctx.fill();
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-        11,
-        -7,
-        4,
-        0,
-        Math.PI*2
-    );
-
-    ctx.fill();
-
-
-    /*
-    ابرو
-    */
-
-    ctx.strokeStyle="#222";
-
-    ctx.lineWidth=5;
-
-    ctx.lineCap="round";
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        -20,
-        -19
-    );
-
-    ctx.lineTo(
-        -4,
-        -14
-    );
-
-    ctx.stroke();
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        4,
-        -14
-    );
-
-    ctx.lineTo(
-        20,
-        -19
-    );
-
-    ctx.stroke();
-
-
-    /*
-    نوک
-    */
-
-    ctx.fillStyle="#f2c300";
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-        0,
-        2
-    );
-
-    ctx.lineTo(
-        -13,
-        13
-    );
-
-    ctx.lineTo(
-        13,
-        13
-    );
-
-    ctx.closePath();
-
-    ctx.fill();
-
-
-    ctx.strokeStyle="#222";
-
-    ctx.lineWidth=3;
-
-    ctx.stroke();
-
-
-    ctx.restore();
-
+    });
 }
 
 
 /* =========================
-   سکه
+   OBSTACLE
 ========================= */
 
-function drawCoins(){
+function createObstacle() {
 
-    for(
-        const c of coins
-    ){
+    const obstacle =
+        document.createElement("div");
 
-        ctx.beginPath();
+    obstacle.className =
+        "obstacle";
 
-        ctx.arc(
-
-            c.x,
-            c.y,
-
-            c.radius,
-
-            0,
-            Math.PI*2
-
+    const obstacleLane =
+        Math.floor(
+            Math.random() * 3
         );
 
+    obstacle.style.left =
+        (
+            getLaneX(obstacleLane) - 25
+        ) + "px";
 
-        ctx.fillStyle="white";
+    obstacle.style.top =
+        "-60px";
 
-        ctx.fill();
+    road.appendChild(
+        obstacle
+    );
+
+    objects.push({
+
+        element: obstacle,
+
+        type: "obstacle",
+
+        lane: obstacleLane,
+
+        y: -60
+
+    });
+}
 
 
-        ctx.lineWidth=4;
+/* =========================
+   COLLISION
+========================= */
 
-        ctx.strokeStyle="#222";
+function collision(object) {
 
-        ctx.stroke();
+    const playerTop =
+        window.innerHeight - 155;
+
+    const playerBottom =
+        playerTop + 62;
+
+    const objectTop =
+        object.y;
+
+    const objectBottom =
+        object.y +
+        object.element.offsetHeight;
+
+    return (
+        object.lane === lane &&
+        objectBottom > playerTop &&
+        objectTop < playerBottom
+    );
+}
 
 
-        ctx.fillStyle="#222";
+/* =========================
+   GAME LOOP
+========================= */
 
-        ctx.font=
-            "bold 13px Arial";
+function loop(timestamp) {
 
-        ctx.textAlign="center";
+    if (!gameRunning)
+        return;
 
 
-        ctx.fillText(
+    /* SPAWN */
 
-            "₿",
+    if (
+        timestamp - lastSpawn >
+        700
+    ) {
 
-            c.x,
-            c.y+5
+        if (
+            Math.random() < .65
+        ) {
 
-        );
+            createCoin();
 
+        } else {
+
+            createObstacle();
+
+        }
+
+        lastSpawn = timestamp;
     }
 
-}
 
+    /* OBJECTS */
 
-/* =========================
-   موانع
-========================= */
-
-function drawObstacles(){
-
-    for(
-        const o of obstacles
-    ){
-
-        const x =
-            o.x-o.size/2;
-
-
-        ctx.fillStyle="#222";
-
-
-        ctx.fillRect(
-
-            x,
-            o.y,
-
-            o.size,
-            o.size
-
-        );
-
-
-        ctx.fillStyle="#fff";
-
-
-        ctx.fillRect(
-
-            x+7,
-            o.y+8,
-
-            o.size-14,
-            7
-
-        );
-
-
-        ctx.fillRect(
-
-            x+7,
-            o.y+27,
-
-            o.size-14,
-            7
-
-        );
-
-    }
-
-}
-
-
-/* =========================
-   گرفتن سکه
-========================= */
-
-function collectCoins(){
-
-    for(
-        let i=coins.length-1;
-        i>=0;
+    for (
+        let i = objects.length - 1;
+        i >= 0;
         i--
-    ){
+    ) {
 
-        const c =
-            coins[i];
+        const object =
+            objects[i];
+
+        object.y += speed;
+
+        object.element.style.top =
+            object.y + "px";
 
 
-        const birdCenter =
-            bird.y +
-            bird.size/2;
+        /* COLLISION */
+
+        if (
+            collision(object)
+        ) {
+
+            if (
+                object.type ===
+                "obstacle"
+            ) {
+
+                endGame();
+
+                return;
+            }
 
 
-        if(
+            if (
+                object.type ===
+                "coin"
+            ) {
 
-            c.lane ===
-            currentLane
+                score++;
 
-            &&
+                scoreElement.textContent =
+                    score;
 
-            Math.abs(
-                c.y-birdCenter
-            ) < 42
+                object.element.remove();
 
-        ){
+                objects.splice(
+                    i,
+                    1
+                );
 
-            coins.splice(
+                continue;
+            }
+        }
+
+
+        /* REMOVE */
+
+        if (
+            object.y >
+            window.innerHeight + 100
+        ) {
+
+            object.element.remove();
+
+            objects.splice(
                 i,
                 1
             );
-
-
-            /*
-            هر سکه ۵ امتیاز
-            */
-
-            score += 5;
-
-
-            document
-                .getElementById(
-                    "score"
-                )
-                .textContent =
-                score;
-
         }
-
     }
 
+
+    /* SPEED */
+
+    speed =
+        4 + score * .03;
+
+
+    animation =
+        requestAnimationFrame(
+            loop
+        );
 }
 
 
 /* =========================
-   برخورد
+   GAME OVER
 ========================= */
 
-function checkCollision(){
+function endGame() {
 
-    const birdCenter =
-        bird.y +
-        bird.size/2;
+    if (!gameRunning)
+        return;
 
+    gameRunning = false;
 
-    for(
-        const o of obstacles
-    ){
-
-        if(
-
-            o.lane ===
-            currentLane
-
-            &&
-
-            Math.abs(
-                o.y-birdCenter
-            ) < 45
-
-        ){
-
-            endGame();
-
-        }
-
-    }
-
-}
+    cancelAnimationFrame(
+        animation
+    );
 
 
-/* =========================
-   رکورد
-========================= */
+    /* BEST */
 
-function updateBest(){
-
-    if(score > bestScore){
+    if (
+        score > bestScore
+    ) {
 
         bestScore =
             score;
 
-
         localStorage.setItem(
-
-            "betaBirdBest",
-
+            "subwayBirdBest",
             bestScore
-
         );
-
     }
 
 
-    document
-        .getElementById(
-            "best"
-        )
-        .textContent =
+    bestElement.textContent =
         bestScore;
 
-}
+
+    finalScore.textContent =
+        "امتیاز: " + score;
 
 
-/* =========================
-   ارسال نتیجه به تلگرام
-========================= */
-
-function sendScoreToTelegram(){
-
-    if(!tg)
-        return;
+    reward.textContent =
+        "🪙 جایزه: +" +
+        (score * 5) +
+        " کوین";
 
 
-    const data = {
-
-        action:
-            "game_over",
-
-        score:
-            score,
-
-        best:
-            bestScore
-
-    };
+    gameOverScreen.style.display =
+        "flex";
 
 
-    /*
-    اطلاعات بازی
-    برای بات ارسال می‌شود
-    */
+    /* =========================
+       SEND DATA TO BOT
+    ========================= */
 
-    try{
+    try {
+
+        let gameId;
+
+        if (
+            window.crypto &&
+            crypto.randomUUID
+        ) {
+
+            gameId =
+                crypto.randomUUID();
+
+        } else {
+
+            gameId =
+                Date.now() +
+                "-" +
+                Math.random()
+                    .toString(36)
+                    .substring(2);
+
+        }
+
 
         tg.sendData(
-            JSON.stringify(data)
+
+            JSON.stringify({
+
+                action:
+                    "game_over",
+
+                score:
+                    score,
+
+                best:
+                    bestScore,
+
+                game_id:
+                    gameId
+
+            })
+
         );
 
-    }
-
-    catch(error){
-
         console.log(
-            "Telegram error:",
+            "GAME DATA SENT:",
+            score
+        );
+
+    } catch (error) {
+
+        console.error(
+            "SEND DATA ERROR:",
             error
         );
 
     }
-
 }
 
 
 /* =========================
-   پایان بازی
+   RESTART
 ========================= */
 
-function endGame(){
+restart.addEventListener(
+    "click",
+    function() {
 
-    if(!gameRunning)
-        return;
-
-
-    gameRunning=false;
-
-
-    updateBest();
-
-
-    document
-        .getElementById(
-            "finalScore"
-        )
-        .textContent =
-        score;
-
-
-    document
-        .getElementById(
-            "finalBest"
-        )
-        .textContent =
-        bestScore;
-
-
-    document
-        .getElementById(
-            "gameOver"
-        )
-        .style.display =
-        "flex";
-
-
-    /*
-    ارسال نتیجه
-    */
-
-    sendScoreToTelegram();
-
-}
-
-
-/* =========================
-   شروع دوباره
-========================= */
-
-document
-    .getElementById(
-        "restart"
-    )
-    .onclick=function(){
-
-        score=0;
-
-        coins=[];
-
-        obstacles=[];
-
-        currentLane=1;
-
-
-        updateBirdLane();
-
-
-        bird.x =
-            bird.targetX;
-
-
-        document
-            .getElementById(
-                "score"
-            )
-            .textContent =
-            "0";
-
-
-        document
-            .getElementById(
-                "gameOver"
-            )
-            .style.display =
-            "none";
-
-
-        gameRunning=true;
-
-    };
-
-
-/* =========================
-   حلقه بازی
-========================= */
-
-function gameLoop(){
-
-    update();
-
-
-    drawRoad();
-
-    drawCoins();
-
-    drawObstacles();
-
-    drawBird();
-
-
-    requestAnimationFrame(
-        gameLoop
-    );
-
-}
-
-
-function update(){
-
-    if(!gameRunning)
-        return;
-
-
-    /*
-    پرنده خودش جلو می‌رود.
-    اشیا به سمت پایین می‌آیند.
-    */
-
-    for(
-        const c of coins
-    ){
-
-        c.y += c.speed;
+        location.reload();
 
     }
+);
 
 
-    for(
-        const o of obstacles
-    ){
+/* =========================
+   START
+========================= */
 
-        o.y += o.speed;
+bestElement.textContent =
+    bestScore;
 
-    }
+setTimeout(
+    function() {
 
+        updatePlayer();
 
-    /*
-    حذف اشیای خارج صفحه
-    */
+        animation =
+            requestAnimationFrame(
+                loop
+            );
 
-    coins =
-        coins.filter(
-            c =>
-            c.y <
-            canvas.height+50
-        );
-
-
-    obstacles =
-        obstacles.filter(
-            o =>
-            o.y <
-            canvas.height+60
-        );
+    },
+    300
+);
 
 
-    collectCoins();
+/* =========================
+   RESIZE
+========================= */
 
-    checkCollision();
-
-}
-
-
-gameLoop();
+window.addEventListener(
+    "resize",
+    updatePlayer
+);
 
 </script>
 

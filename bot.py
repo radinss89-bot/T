@@ -1087,4 +1087,185 @@ def game_score_api():
                 best_score = GREATEST(
                     game_scores.best_score,
                     EXCLUDED.score
-     
+                )
+
+            RETURNING best_score
+        """, (
+            user_id,
+            name,
+            score,
+            score
+        ))
+
+        best_score = cur.fetchone()[0]
+
+        cur.execute("""
+            INSERT INTO users
+            (
+                user_id,
+                name,
+                coins,
+                last_message
+            )
+            VALUES (%s, %s, %s, 0)
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                coins =
+                    users.coins + EXCLUDED.coins
+        """, (
+            user_id,
+            name,
+            coins_awarded
+        ))
+
+        conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "score": score,
+            "coins_awarded": coins_awarded,
+            "best_score": best_score
+        })
+
+    except Exception as e:
+
+        conn.rollback()
+
+        print(
+            "GAME API ERROR:",
+            e
+        )
+
+        return jsonify({
+            "ok": False,
+            "error": "database error"
+        }), 500
+
+    finally:
+
+        cur.close()
+        conn.close()
+
+
+def run_web():
+
+    port = int(
+        os.environ.get(
+            "PORT",
+            "10000"
+        )
+    )
+
+    web.run(
+        host="0.0.0.0",
+        port=port,
+        use_reloader=False
+    )
+
+
+# =========================
+# MAIN
+# =========================
+
+def main():
+
+    init_db()
+
+    Thread(
+        target=run_web,
+        daemon=True
+    ).start()
+
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "start",
+            start
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "balance",
+            balance
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "top",
+            top
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "gametop",
+            gametop
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "addcoins",
+            addcoins
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "removecoins",
+            removecoins
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "say",
+            say
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "setgroup",
+            setgroup
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "groupmsg",
+            groupmsg
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.StatusUpdate.WEB_APP_DATA,
+            web_app_data
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            message_handler
+        )
+    )
+
+    print("🤖 ربات روشن شد...")
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()

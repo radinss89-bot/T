@@ -1,10 +1,10 @@
 import os
 import time
 import json
-import psycopg2
-
-from flask import Flask, request, jsonify
 from threading import Thread
+
+import psycopg2
+from flask import Flask, request, jsonify
 
 from telegram import (
     Update,
@@ -42,14 +42,15 @@ COINS_PER_GAME_SCORE = 5
 # =========================
 
 def get_db():
-    return psycopg2.connect(os.environ["DATABASE_URL"])
+    return psycopg2.connect(
+        os.environ["DATABASE_URL"]
+    )
 
 
 def init_db():
     conn = get_db()
     cur = conn.cursor()
 
-    # Users
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -59,7 +60,6 @@ def init_db():
         )
     """)
 
-    # Game scores
     cur.execute("""
         CREATE TABLE IF NOT EXISTS game_scores (
             user_id BIGINT PRIMARY KEY,
@@ -70,7 +70,6 @@ def init_db():
         )
     """)
 
-    # Game results
     cur.execute("""
         CREATE TABLE IF NOT EXISTS game_results (
             game_id TEXT PRIMARY KEY,
@@ -81,7 +80,6 @@ def init_db():
         )
     """)
 
-    # Saved groups
     cur.execute("""
         CREATE TABLE IF NOT EXISTS bot_groups (
             chat_id BIGINT PRIMARY KEY,
@@ -96,7 +94,7 @@ def init_db():
 
 
 # =========================
-# USER FUNCTIONS
+# USER
 # =========================
 
 def get_user(user_id, name):
@@ -140,13 +138,17 @@ def update_user(user_id, name, coins, last):
         INSERT INTO users
         (user_id, name, coins, last_message)
         VALUES (%s, %s, %s, %s)
-
         ON CONFLICT (user_id)
         DO UPDATE SET
             name = EXCLUDED.name,
             coins = EXCLUDED.coins,
             last_message = EXCLUDED.last_message
-    """, (user_id, name, coins, last))
+    """, (
+        user_id,
+        name,
+        coins,
+        last
+    ))
 
     conn.commit()
 
@@ -181,7 +183,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = time.time()
 
-    coins, last = get_user(user_id, name)
+    coins, last = get_user(
+        user_id,
+        name
+    )
 
     if now - last < COOLDOWN:
         return
@@ -213,7 +218,6 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = update.effective_user
-
     name = user.first_name or "کاربر"
 
     coins, _ = get_user(
@@ -342,30 +346,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-
         "🤖 ربات کوین فعاله!\n\n"
-
         "🎮 Subway Bird\n"
         "🪙 هر امتیاز بازی = ۵ کوین\n\n"
-
         "🗣 فولک = ۱۰ کوین\n"
         "💰 /balance = موجودی\n"
         "🏆 /top = جدول کوین‌ها\n"
         "🎮 /gametop = جدول رکورد بازی\n\n"
-
         "👑 دستورات ادمین:\n"
         "➕ /addcoins 1000\n"
         "➖ /removecoins 1000\n"
         "📢 /say متن\n"
         "📢 /groupmsg متن\n"
         "⚙️ /setgroup",
-
         reply_markup=reply_markup
     )
 
 
 # =========================
-# GAME DATA - OLD METHOD
+# OLD MINI APP DATA
 # =========================
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -388,7 +387,10 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     raw_data = message.web_app_data.data
 
-    print("GAME DATA RECEIVED:", raw_data)
+    print(
+        "GAME DATA RECEIVED:",
+        raw_data
+    )
 
     try:
         data = json.loads(raw_data)
@@ -410,7 +412,9 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        score = int(data.get("score", 0))
+        score = int(
+            data.get("score", 0)
+        )
 
     except (TypeError, ValueError):
 
@@ -420,15 +424,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    if score < 0:
-
-        await message.reply_text(
-            "❌ امتیاز نامعتبر است."
-        )
-
-        return
-
-    if score > 100000:
+    if score < 0 or score > 100000:
 
         await message.reply_text(
             "❌ امتیاز غیرمجاز است."
@@ -459,14 +455,12 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             WHERE game_id = %s
         """, (game_id,))
 
-        already_exists = cur.fetchone()
-
-        if already_exists:
+        if cur.fetchone():
 
             conn.rollback()
 
             await message.reply_text(
-                "⚠️ این نتیجه بازی قبلاً ثبت شده."
+                "⚠️ این نتیجه قبلاً ثبت شده."
             )
 
             return
@@ -477,7 +471,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         now = time.time()
 
-        # Save result
         cur.execute("""
             INSERT INTO game_results
             (
@@ -496,7 +489,6 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             now
         ))
 
-        # Save score
         cur.execute("""
             INSERT INTO game_scores
             (
@@ -510,18 +502,16 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             ON CONFLICT (user_id)
             DO UPDATE SET
-
                 name = EXCLUDED.name,
-
                 score = EXCLUDED.score,
-
                 games_played =
                     game_scores.games_played + 1,
-
                 best_score = GREATEST(
                     game_scores.best_score,
                     EXCLUDED.score
                 )
+
+            RETURNING best_score
         """, (
             user_id,
             name,
@@ -529,7 +519,8 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
             score
         ))
 
-        # Add coins
+        best_score = cur.fetchone()[0]
+
         cur.execute("""
             INSERT INTO users
             (
@@ -542,9 +533,7 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             ON CONFLICT (user_id)
             DO UPDATE SET
-
                 name = EXCLUDED.name,
-
                 coins =
                     users.coins + EXCLUDED.coins
         """, (
@@ -559,7 +548,10 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn.rollback()
 
-        print("GAME ERROR:", e)
+        print(
+            "GAME ERROR:",
+            e
+        )
 
         await message.reply_text(
             "❌ هنگام ثبت نتیجه مشکلی پیش آمد."
@@ -573,13 +565,10 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
     await message.reply_text(
-
         f"🎮 بازی تموم شد!\n\n"
-
         f"🏆 امتیاز: {score}\n"
-        f"🪙 جایزه: +{coins_awarded} کوین\n\n"
-
-        f"🎯 رکوردت رو با /gametop ببین!"
+        f"🪙 جایزه: +{coins_awarded} کوین\n"
+        f"🏅 رکورد: {best_score}"
     )
 
 
@@ -610,14 +599,12 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
 
         await update.message.reply_text(
-            "❌ مقدار کوین را وارد کن.\n"
-            "مثال: /addcoins 1000"
+            "❌ مقدار کوین را وارد کن."
         )
 
         return
 
     try:
-
         amount = int(
             context.args[0]
         )
@@ -662,7 +649,7 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        f"✅ به {target_name} تعداد {amount} 🪙 کوین اضافه شد!"
+        f"✅ به {target_name} تعداد {amount} 🪙 اضافه شد!"
     )
 
 
@@ -684,8 +671,7 @@ async def removecoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message.reply_to_message:
 
         await update.message.reply_text(
-            "❌ روی پیام شخص Reply کن.\n"
-            "مثال: /removecoins 1000"
+            "❌ روی پیام شخص Reply کن."
         )
 
         return
@@ -693,14 +679,12 @@ async def removecoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
 
         await update.message.reply_text(
-            "❌ مقدار کوین را وارد کن.\n"
-            "مثال: /removecoins 1000"
+            "❌ مقدار کوین را وارد کن."
         )
 
         return
 
     try:
-
         amount = int(
             context.args[0]
         )
@@ -750,7 +734,7 @@ async def removecoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(
-        f"✅ از {target_name} تعداد {removed} 🪙 کوین کم شد!"
+        f"✅ از {target_name} تعداد {removed} 🪙 کم شد!"
     )
 
 
@@ -772,8 +756,7 @@ async def say(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
 
         await update.message.reply_text(
-            "❌ متن پیام را وارد کن.\n"
-            "مثال: /say سلام بچه‌ها 👋"
+            "❌ متن پیام را وارد کن."
         )
 
         return
@@ -802,14 +785,13 @@ async def setgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    # فقط داخل گروه
-    if update.message.chat.type not in [
+    if update.message.chat.type not in (
         "group",
         "supergroup"
-    ]:
+    ):
 
         await update.message.reply_text(
-            "❌ این دستور رو داخل گروهی بزن که می‌خوای پیام‌ها اونجا ارسال بشن."
+            "❌ این دستور را داخل گروه بزن."
         )
 
         return
@@ -840,11 +822,11 @@ async def setgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     await update.message.reply_text(
-        f"✅ این گروه ثبت شد!\n\n"
+        f"✅ گروه ثبت شد!\n\n"
         f"📌 {title}\n"
         f"🆔 {chat.id}\n\n"
-        f"حالا از پی‌وی ربات بزن:\n"
-        f"/groupmsg پیام"
+        f"حالا در پی‌وی ربات بزن:\n"
+        f"/groupmsg سلام 👋"
     )
 
 
@@ -866,7 +848,7 @@ async def groupmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
 
         await update.message.reply_text(
-            "❌ متن پیام رو وارد کن.\n\n"
+            "❌ متن پیام را وارد کن.\n\n"
             "مثال:\n"
             "/groupmsg سلام بچه‌ها 👋"
         )
@@ -881,7 +863,7 @@ async def groupmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT chat_id, title
+        SELECT chat_id
         FROM bot_groups
     """)
 
@@ -893,7 +875,7 @@ async def groupmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groups:
 
         await update.message.reply_text(
-            "❌ هنوز هیچ گروهی ثبت نشده.\n\n"
+            "❌ هنوز گروهی ثبت نشده.\n\n"
             "اول داخل گروه بزن:\n"
             "/setgroup"
         )
@@ -903,7 +885,7 @@ async def groupmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sent = 0
     failed = 0
 
-    for chat_id, title in groups:
+    for (chat_id,) in groups:
 
         try:
 
@@ -917,21 +899,20 @@ async def groupmsg(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
 
             print(
-                f"GROUP SEND ERROR {chat_id}:",
-                e
+                f"GROUP SEND ERROR {chat_id}: {e}"
             )
 
             failed += 1
 
     await update.message.reply_text(
         f"📢 پیام ارسال شد!\n\n"
-        f"✅ ارسال موفق: {sent}\n"
+        f"✅ موفق: {sent}\n"
         f"❌ ناموفق: {failed}"
     )
 
 
 # =========================
-# WEB SERVER FOR RENDER
+# FLASK / RENDER
 # =========================
 
 web = Flask(__name__)
@@ -944,7 +925,7 @@ def health():
 
 
 @web.after_request
-def add_cors(response):
+def cors(response):
 
     response.headers[
         "Access-Control-Allow-Origin"
@@ -953,7 +934,7 @@ def add_cors(response):
     response.headers[
         "Access-Control-Allow-Headers"
     ] = "Content-Type"
-
+    
     response.headers[
         "Access-Control-Allow-Methods"
     ] = "GET, POST, OPTIONS"
@@ -1047,7 +1028,6 @@ def game_score_api():
 
     try:
 
-        # Check duplicate
         cur.execute("""
             SELECT 1
             FROM game_results
@@ -1069,7 +1049,6 @@ def game_score_api():
 
         now = time.time()
 
-        # Save game result
         cur.execute("""
             INSERT INTO game_results
             (
@@ -1088,7 +1067,6 @@ def game_score_api():
             now
         ))
 
-               # Save score
         cur.execute("""
             INSERT INTO game_scores
             (
@@ -1099,40 +1077,14 @@ def game_score_api():
                 best_score
             )
             VALUES (%s, %s, %s, 1, %s)
+
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name = EXCLUDED.name,
                 score = EXCLUDED.score,
-                games_played = game_scores.games_played + 1,
+                games_played =
+                    game_scores.games_played + 1,
                 best_score = GREATEST(
                     game_scores.best_score,
                     EXCLUDED.score
-                )
-            RETURNING best_score
-        """, (
-            user_id,
-            name,
-            score,
-            score
-        ))
-
-        best_score = cur.fetchone()[0]
-        # Add coins
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES (%s, %s, %s, 0)
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                coins = users.coins + EXCLUDED.coins
-        """, (
-            user_id,
-            name,
-            coins_awarded
-        ))
+     

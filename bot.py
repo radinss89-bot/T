@@ -1,32 +1,95 @@
-import json
+import os
 import time
-
+import psycopg2
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
-
-TOKEN = "8594435724:AAFQvX7jg6Nc7OJ2Xpb5ZV-aK2Sm-J79Q2E"
+TOKEN = os.environ["8594435724:AAFgGqnBbxzst3c2K1L6jBf3vh2wHWna0OA"]
 ADMIN_ID = 6235380364
 
 COINS_PER_MESSAGE = 10
 COOLDOWN = 5 * 60
-DATA_FILE = "coins.json"
 
 
-def load_data():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+def get_db():
+    return psycopg2.connect(os.environ["DATABASE_URL"])
 
 
-def save_data():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def init_db():
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            name TEXT NOT NULL,
+            coins INTEGER NOT NULL DEFAULT 0,
+            last_message DOUBLE PRECISION NOT NULL DEFAULT 0
+        )
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
-data = load_data()
+def get_user(user_id, name):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT coins, last_message FROM users WHERE user_id = %s",
+        (user_id,)
+    )
+
+    row = cur.fetchone()
+
+    if row is None:
+        cur.execute(
+            """
+            INSERT INTO users (user_id, name, coins, last_message)
+            VALUES (%s, %s, 0, 0)
+            """,
+            (user_id, name)
+        )
+        conn.commit()
+        coins = 0
+        last = 0
+    else:
+        coins, last = row
+
+    cur.close()
+    conn.close()
+
+    return coins, last
+
+
+def update_user(user_id, name, coins, last):
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO users (user_id, name, coins, last_message)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            coins = EXCLUDED.coins,
+            last_message = EXCLUDED.last_message
+        """,
+        (user_id, name, coins, last)
+    )
+
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -39,26 +102,24 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user = message.from_user
-    user_id = str(user.id)
+    user_id = user.id
     name = user.first_name or "کاربر"
+
     now = time.time()
 
-    user_data = data.get(user_id, {
-        "coins": 0,
-        "last": 0,
-        "name": name
-    })
+    coins, last = get_user(user_id, name)
 
-    user_data["name"] = name
-
-    if now - user_data.get("last", 0) < COOLDOWN:
+    if now - last < COOLDOWN:
         return
 
-    user_data["coins"] = user_data.get("coins", 0) + COINS_PER_MESSAGE
-    user_data["last"] = now
+    coins += COINS_PER_MESSAGE
 
-    data[user_id] = user_data
-    save_data()
+    update_user(
+        user_id,
+        name,
+        coins,
+        now
+    )
 
     await message.reply_text(
         f"🪙 {name} +{COINS_PER_MESSAGE} کوین گرفت!"
@@ -69,8 +130,10 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_user or not update.message:
         return
 
-    user_id = str(update.effective_user.id)
-    coins = data.get(user_id, {}).get("coins", 0)
+    user = update.effective_user
+    name = user.first_name or "کاربر"
+
+    coins, _ = get_user(user.id, name)
 
     await update.message.reply_text(
         f"💰 موجودی شما: {coins} کوین"
@@ -81,11 +144,20 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    ranking = sorted(
-        data.values(),
-        key=lambda user: user.get("coins", 0),
-        reverse=True
-    )[:10]
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name, coins
+        FROM users
+        ORDER BY coins DESC
+        LIMIT 10
+    """)
+
+    ranking = cur.fetchall()
+
+    cur.close()
+    conn.close()
 
     if not ranking:
         await update.message.reply_text(
@@ -94,12 +166,10 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = "🏆 جدول ۱۰ نفر برتر\n\n"
+
     medals = ["🥇", "🥈", "🥉"]
 
-    for i, user in enumerate(ranking, 1):
-        name = user.get("name", "کاربر")
-        coins = user.get("coins", 0)
-
+    for i, (name, coins) in enumerate(ranking, 1):
         prefix = medals[i - 1] if i <= 3 else f"{i}."
 
         text += f"{prefix} {name} — {coins} 🪙\n"
@@ -158,20 +228,20 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target = update.message.reply_to_message.from_user
-    target_id = str(target.id)
+
+    target_id = target.id
     target_name = target.first_name or "کاربر"
 
-    user_data = data.get(target_id, {
-        "coins": 0,
-        "last": 0,
-        "name": target_name
-    })
+    coins, last = get_user(target_id, target_name)
 
-    user_data["name"] = target_name
-    user_data["coins"] = user_data.get("coins", 0) + amount
+    coins += amount
 
-    data[target_id] = user_data
-    save_data()
+    update_user(
+        target_id,
+        target_name,
+        coins,
+        last
+    )
 
     await update.message.reply_text(
         f"✅ به {target_name} تعداد {amount} 🪙 کوین اضافه شد!"
@@ -214,24 +284,21 @@ async def removecoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target = update.message.reply_to_message.from_user
-    target_id = str(target.id)
+
+    target_id = target.id
     target_name = target.first_name or "کاربر"
 
-    user_data = data.get(target_id, {
-        "coins": 0,
-        "last": 0,
-        "name": target_name
-    })
+    coins, last = get_user(target_id, target_name)
 
-    user_data["name"] = target_name
+    removed = min(amount, coins)
+    coins -= removed
 
-    current_coins = user_data.get("coins", 0)
-    removed = min(amount, current_coins)
-
-    user_data["coins"] = current_coins - removed
-
-    data[target_id] = user_data
-    save_data()
+    update_user(
+        target_id,
+        target_name,
+        coins,
+        last
+    )
 
     await update.message.reply_text(
         f"✅ از {target_name} تعداد {removed} 🪙 کوین کم شد!"
@@ -261,6 +328,8 @@ async def say(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    init_db()
+
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))

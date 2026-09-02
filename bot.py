@@ -1088,11 +1088,51 @@ def game_score_api():
             now
         ))
 
-        # Save score
+               # Save score
         cur.execute("""
             INSERT INTO game_scores
             (
                 user_id,
                 name,
                 score,
-             
+                games_played,
+                best_score
+            )
+            VALUES (%s, %s, %s, 1, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                score = EXCLUDED.score,
+                games_played = game_scores.games_played + 1,
+                best_score = GREATEST(
+                    game_scores.best_score,
+                    EXCLUDED.score
+                )
+            RETURNING best_score
+        """, (
+            user_id,
+            name,
+            score,
+            score
+        ))
+
+        best_score = cur.fetchone()[0]
+        # Add coins
+        cur.execute("""
+            INSERT INTO users
+            (
+                user_id,
+                name,
+                coins,
+                last_message
+            )
+            VALUES (%s, %s, %s, 0)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                coins = users.coins + EXCLUDED.coins
+        """, (
+            user_id,
+            name,
+            coins_awarded
+        ))

@@ -1,5 +1,5 @@
 import os
- time
+import time
 import json
 import psycopg2
 

@@ -306,17 +306,21 @@ async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT name, score, games_played, best_score
+        SELECT
+            name,
+            score,
+            games_played,
+            best_score
         FROM game_scores
         WHERE user_id = %s
     """, (user_id,))
 
     result = cur.fetchone()
 
-    cur.close()
-    conn.close()
-
     if not result:
+        cur.close()
+        conn.close()
+
         await update.message.reply_text(
             "🎮 هنوز هیچ بازی‌ای انجام ندادی!"
         )
@@ -324,11 +328,23 @@ async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db_name, score, games_played, best_score = result
 
+    cur.execute("""
+        SELECT COALESCE(SUM(score), 0)
+        FROM game_results
+        WHERE user_id = %s
+    """, (user_id,))
+
+    total_score = cur.fetchone()[0]
+
+    cur.close()
+    conn.close()
+
     await update.message.reply_text(
         f"🎮 آمار Subway Bird\n\n"
         f"👤 بازیکن: {db_name}\n"
         f"🕹 تعداد بازی: {games_played}\n"
         f"📊 آخرین امتیاز: {score}\n"
+        f"➕ مجموع امتیازها: {total_score}\n"
         f"🏆 رکورد: {best_score}"
     )
 

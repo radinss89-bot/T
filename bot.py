@@ -290,7 +290,7 @@ async def gametop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
-# GAME STATS - USER
+# GAME STATS
 # =========================
 
 async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,52 +305,61 @@ async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT
-            name,
-            score,
-            games_played,
-            best_score
-        FROM game_scores
-        WHERE user_id = %s
-    """, (user_id,))
+    try:
 
-    result = cur.fetchone()
+        cur.execute("""
+            SELECT
+                name,
+                score,
+                games_played,
+                best_score
+            FROM game_scores
+            WHERE user_id = %s
+        """, (user_id,))
 
-    if not result:
+        result = cur.fetchone()
+
+        if not result:
+            await update.message.reply_text(
+                "🎮 هنوز هیچ بازی‌ای انجام ندادی!"
+            )
+            return
+
+        db_name, last_score, games_played, best_score = result
+
+        cur.execute("""
+            SELECT COALESCE(SUM(score), 0)
+            FROM game_results
+            WHERE user_id = %s
+        """, (user_id,))
+
+        total_score = cur.fetchone()[0]
+
+        await update.message.reply_text(
+            f"🎮 آمار Subway Bird\n\n"
+            f"👤 بازیکن: {db_name}\n"
+            f"🕹 تعداد بازی: {games_played}\n"
+            f"📊 آخرین امتیاز: {last_score}\n"
+            f"➕ مجموع امتیازها: {total_score}\n"
+            f"🏆 رکورد: {best_score}"
+        )
+
+    except Exception as e:
+
+        print("GAME STATS ERROR:", e)
+
+        await update.message.reply_text(
+            "❌ خطا در گرفتن آمار."
+        )
+
+    finally:
+
         cur.close()
         conn.close()
 
-        await update.message.reply_text(
-            "🎮 هنوز هیچ بازی‌ای انجام ندادی!"
-        )
-        return
-
-    db_name, score, games_played, best_score = result
-
-    cur.execute("""
-        SELECT COALESCE(SUM(score), 0)
-        FROM game_results
-        WHERE user_id = %s
-    """, (user_id,))
-
-    total_score = cur.fetchone()[0]
-
-    cur.close()
-    conn.close()
-
-    await update.message.reply_text(
-        f"🎮 آمار Subway Bird\n\n"
-        f"👤 بازیکن: {db_name}\n"
-        f"🕹 تعداد بازی: {games_played}\n"
-        f"📊 آخرین امتیاز: {score}\n"
-        f"➕ مجموع امتیازها: {total_score}\n"
-        f"🏆 رکورد: {best_score}"
-    )
-
 
 # =========================
-# GAME STATS - ADMIN
+# PLAYER STATS - ADMIN
 # =========================
 
 async def playerstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -435,8 +444,10 @@ async def playerstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
+
         cur.close()
         conn.close()
+
 
 # =========================
 # START
@@ -1216,10 +1227,6 @@ def main():
         )
     )
 
-    app.add_handler(
-        CommandHandler("playerstats",                 playerstats) 
-        )
-    )
     print("🤖 ربات روشن شد...")
 
     app.run_polling()

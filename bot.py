@@ -290,6 +290,110 @@ async def gametop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================
+# GAME STATS - USER
+# =========================
+
+async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not update.effective_user or not update.message:
+        return
+
+    user = update.effective_user
+    user_id = user.id
+    name = user.first_name or "کاربر"
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name, score, games_played, best_score
+        FROM game_scores
+        WHERE user_id = %s
+    """, (user_id,))
+
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not result:
+        await update.message.reply_text(
+            "🎮 هنوز هیچ بازی‌ای انجام ندادی!"
+        )
+        return
+
+    db_name, score, games_played, best_score = result
+
+    await update.message.reply_text(
+        f"🎮 آمار Subway Bird\n\n"
+        f"👤 بازیکن: {db_name}\n"
+        f"🕹 تعداد بازی: {games_played}\n"
+        f"📊 آخرین امتیاز: {score}\n"
+        f"🏆 رکورد: {best_score}"
+    )
+
+
+# =========================
+# GAME STATS - ADMIN
+# =========================
+
+async def playerstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not update.effective_user:
+        return
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.message:
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "❌ روی پیام شخص Reply کن."
+        )
+        return
+
+    target = update.message.reply_to_message.from_user
+
+    if not target:
+        return
+
+    name = target.first_name or "کاربر"
+
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT name, score, games_played, best_score
+        FROM game_scores
+        WHERE user_id = %s
+    """, (target.id,))
+
+    result = cur.fetchone()
+
+    cur.close()
+    conn.close()
+
+    if not result:
+        await update.message.reply_text(
+            f"🎮 {name} هنوز بازی نکرده."
+        )
+        return
+
+    db_name, score, games_played, best_score = result
+
+    await update.message.reply_text(
+        f"🎮 آمار بازیکن\n\n"
+        f"👤 نام: {db_name}\n"
+        f"🆔 ID: {target.id}\n"
+        f"🕹 تعداد بازی: {games_played}\n"
+        f"📊 آخرین امتیاز: {score}\n"
+        f"🏆 رکورد: {best_score}"
+    )
+
+
+# =========================
 # START
 # =========================
 
@@ -312,10 +416,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🗣 فولک = ۱۰ کوین\n"
         "💰 /balance = موجودی\n"
         "🏆 /top = جدول کوین‌ها\n"
-        "🎮 /gametop = جدول رکورد بازی\n\n"
+        "🎮 /gametop = جدول رکورد بازی\n"
+        "📊 /gamestats = آمار بازی من\n\n"
         "👑 دستورات ادمین:\n"
         "➕ /addcoins 1000\n"
         "➖ /removecoins 1000\n"
+        "📊 /playerstats = آمار بازیکن با Reply\n"
         "📢 /say متن\n"
         "📢 /groupmsg متن\n"
         "⚙️ /setgroup",
@@ -1021,6 +1127,14 @@ def main():
 
     app.add_handler(
         CommandHandler("gametop", gametop)
+    )
+
+    app.add_handler(
+        CommandHandler("gamestats", gamestats)
+    )
+
+    app.add_handler(
+        CommandHandler("playerstats", playerstats)
     )
 
     app.add_handler(

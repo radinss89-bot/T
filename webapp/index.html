@@ -323,42 +323,189 @@ tg.expand();
 
 
 // ==================================================
-// IMPORTANT
-// آدرس Render سرویس رباتت را اینجا بگذار
-// مثال:
-// https://mybot.onrender.com
+// BOT API
 // ==================================================
 
-const BOT_API_URL = "https://fwlkhy.onrender.com/";
+const BOT_API_URL =
+    "https://fwlkhy.onrender.com";
 
 
-const game = document.getElementById("game");
-const player = document.getElementById("player");
+// ==================================================
+// COIN SOUND
+// ==================================================
 
-const scoreText = document.getElementById("score");
-const bestText = document.getElementById("best");
+let audioContext = null;
 
-const gameover = document.getElementById("gameover");
-const finalScore = document.getElementById("finalScore");
-const reward = document.getElementById("reward");
-const statusText = document.getElementById("status");
+function playCoinSound() {
 
-const leftButton = document.getElementById("left");
-const rightButton = document.getElementById("right");
-const restartButton = document.getElementById("restart");
+    try {
 
+        if (!audioContext) {
+
+            audioContext =
+                new (
+                    window.AudioContext ||
+                    window.webkitAudioContext
+                )();
+
+        }
+
+        if (
+            audioContext.state ===
+            "suspended"
+        ) {
+
+            audioContext.resume();
+        }
+
+        const now =
+            audioContext.currentTime;
+
+
+        // صدای اول
+        const osc1 =
+            audioContext.createOscillator();
+
+        const gain1 =
+            audioContext.createGain();
+
+        osc1.type = "square";
+
+        osc1.frequency.setValueAtTime(
+            880,
+            now
+        );
+
+        osc1.frequency.exponentialRampToValueAtTime(
+            1320,
+            now + 0.08
+        );
+
+        gain1.gain.setValueAtTime(
+            0.001,
+            now
+        );
+
+        gain1.gain.exponentialRampToValueAtTime(
+            0.16,
+            now + 0.01
+        );
+
+        gain1.gain.exponentialRampToValueAtTime(
+            0.001,
+            now + 0.10
+        );
+
+        osc1.connect(gain1);
+        gain1.connect(
+            audioContext.destination
+        );
+
+        osc1.start(now);
+        osc1.stop(now + 0.10);
+
+
+        // صدای دوم برای حالت سکه‌ای
+        const osc2 =
+            audioContext.createOscillator();
+
+        const gain2 =
+            audioContext.createGain();
+
+        osc2.type = "square";
+
+        osc2.frequency.setValueAtTime(
+            1320,
+            now + 0.06
+        );
+
+        osc2.frequency.exponentialRampToValueAtTime(
+            1760,
+            now + 0.13
+        );
+
+        gain2.gain.setValueAtTime(
+            0.001,
+            now + 0.06
+        );
+
+        gain2.gain.exponentialRampToValueAtTime(
+            0.12,
+            now + 0.07
+        );
+
+        gain2.gain.exponentialRampToValueAtTime(
+            0.001,
+            now + 0.16
+        );
+
+        osc2.connect(gain2);
+        gain2.connect(
+            audioContext.destination
+        );
+
+        osc2.start(now + 0.06);
+        osc2.stop(now + 0.16);
+
+    } catch (error) {
+
+        console.log(
+            "Audio error:",
+            error
+        );
+
+    }
+}
+
+
+// ==================================================
+// ELEMENTS
+// ==================================================
+
+const game =
+    document.getElementById("game");
+
+const player =
+    document.getElementById("player");
+
+const scoreText =
+    document.getElementById("score");
+
+const bestText =
+    document.getElementById("best");
+
+const gameover =
+    document.getElementById("gameover");
+
+const finalScore =
+    document.getElementById("finalScore");
+
+const reward =
+    document.getElementById("reward");
+
+const statusText =
+    document.getElementById("status");
+
+const leftButton =
+    document.getElementById("left");
+
+const rightButton =
+    document.getElementById("right");
+
+const restartButton =
+    document.getElementById("restart");
+
+
+// ==================================================
+// GAME VARIABLES
+// ==================================================
 
 let lane = 1;
 let score = 0;
-
 let running = false;
-
 let speed = 5;
-
 let objects = [];
-
 let spawnTimer = 0;
-
 let lastTime = 0;
 
 
@@ -366,9 +513,12 @@ let lastTime = 0;
 // LOCAL BEST
 // ==================================================
 
-let bestScore = Number(
-    localStorage.getItem("subway_bird_best") || 0
-);
+let bestScore =
+    Number(
+        localStorage.getItem(
+            "subway_bird_best"
+        ) || 0
+    );
 
 bestText.textContent =
     "رکورد: " + bestScore;
@@ -496,7 +646,8 @@ function createCoin(laneNumber) {
     const coin =
         document.createElement("div");
 
-    coin.className = "coin";
+    coin.className =
+        "coin";
 
     const laneWidth =
         game.clientWidth / 3;
@@ -508,15 +659,21 @@ function createCoin(laneNumber) {
             14
         ) + "px";
 
-    coin.style.top = "-40px";
+    coin.style.top =
+        "-40px";
 
     game.appendChild(coin);
 
     objects.push({
+
         el: coin,
+
         lane: laneNumber,
+
         y: -40,
+
         type: "coin"
+
     });
 }
 
@@ -543,15 +700,23 @@ function createObstacle(laneNumber) {
             27
         ) + "px";
 
-    obstacle.style.top = "-70px";
+    obstacle.style.top =
+        "-70px";
 
-    game.appendChild(obstacle);
+    game.appendChild(
+        obstacle
+    );
 
     objects.push({
+
         el: obstacle,
+
         lane: laneNumber,
+
         y: -70,
+
         type: "obstacle"
+
     });
 }
 
@@ -589,9 +754,12 @@ function loop(timestamp) {
     const delta =
         timestamp - lastTime;
 
-    lastTime = timestamp;
+    lastTime =
+        timestamp;
 
-    spawnTimer += delta;
+    spawnTimer +=
+        delta;
+
 
     if (spawnTimer > 650) {
 
@@ -602,10 +770,20 @@ function loop(timestamp) {
                 Math.random() * 3
             );
 
-        if (Math.random() < .65)
-            createCoin(randomLane);
-        else
-            createObstacle(randomLane);
+        if (
+            Math.random() < .65
+        ) {
+
+            createCoin(
+                randomLane
+            );
+
+        } else {
+
+            createObstacle(
+                randomLane
+            );
+        }
     }
 
 
@@ -626,7 +804,10 @@ function loop(timestamp) {
             obj.y + "px";
 
 
-        // collision
+        // =========================
+        // COLLISION
+        // =========================
+
         if (
             obj.lane === lane &&
             collision(
@@ -640,6 +821,9 @@ function loop(timestamp) {
             ) {
 
                 score++;
+
+                // 🔊 صدای گرفتن سکه
+                playCoinSound();
 
                 scoreText.textContent =
                     "🏆 " + score;
@@ -662,7 +846,10 @@ function loop(timestamp) {
         }
 
 
-        // remove
+        // =========================
+        // REMOVE
+        // =========================
+
         if (
             obj.y >
             game.clientHeight + 100
@@ -678,7 +865,10 @@ function loop(timestamp) {
     }
 
 
-    // difficulty
+    // =========================
+    // DIFFICULTY
+    // =========================
+
     speed =
         5 +
         Math.min(
@@ -687,7 +877,9 @@ function loop(timestamp) {
         );
 
 
-    requestAnimationFrame(loop);
+    requestAnimationFrame(
+        loop
+    );
 }
 
 
@@ -698,7 +890,8 @@ function loop(timestamp) {
 function startGame() {
 
     objects.forEach(
-        obj => obj.el.remove()
+        obj =>
+            obj.el.remove()
     );
 
     objects = [];
@@ -727,7 +920,9 @@ function startGame() {
     lastTime =
         performance.now();
 
-    requestAnimationFrame(loop);
+    requestAnimationFrame(
+        loop
+    );
 }
 
 
@@ -749,7 +944,6 @@ async function sendScore(score) {
     }
 
 
-    // ساخت شناسه یکتا
     const gameId =
         Date.now() +
         "-" +
@@ -784,6 +978,7 @@ async function sendScore(score) {
 
                     game_id:
                         gameId
+
                 })
             }
         );
@@ -820,9 +1015,11 @@ async function endGame() {
 
     running = false;
 
+
     if (score > bestScore) {
 
-        bestScore = score;
+        bestScore =
+            score;
 
         localStorage.setItem(
             "subway_bird_best",
@@ -839,8 +1036,10 @@ async function endGame() {
         (score * 5) +
         " کوین";
 
+
     gameover.style.display =
         "flex";
+
 
     statusText.textContent =
         "⏳ در حال ثبت جایزه...";
@@ -849,7 +1048,9 @@ async function endGame() {
     try {
 
         const result =
-            await sendScore(score);
+            await sendScore(
+                score
+            );
 
 
         reward.textContent =
@@ -857,8 +1058,9 @@ async function endGame() {
             result.coins_awarded +
             " کوین";
 
+
         statusText.textContent =
-            "✅ جایزه به موجودیت اضافه شد!";
+            "✅ جایزه به موجودی اضافه شد!";
 
     } catch (error) {
 
@@ -869,6 +1071,7 @@ async function endGame() {
 
         statusText.textContent =
             "❌ ثبت جایزه ناموفق بود.";
+
     }
 }
 

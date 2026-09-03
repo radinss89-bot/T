@@ -2,12 +2,10 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width,
-      initial-scale=1.0,
-      maximum-scale=1.0,
-      user-scalable=no">
+<meta
+    name="viewport"
+    content="width=device-width,initial-scale=1.0,user-scalable=no"
+>
 
 <title>Subway Bird</title>
 
@@ -17,426 +15,221 @@
 
 * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
     user-select: none;
     -webkit-user-select: none;
-    -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    background: white;
+body {
+    margin: 0;
+    background: #eee;
     font-family: Arial, sans-serif;
+    overflow: hidden;
 }
 
 #game {
     position: relative;
     width: 100vw;
     height: 100vh;
+    max-width: 500px;
+    margin: auto;
+    background: #ddd;
     overflow: hidden;
-    background: white;
 }
-
-/* =========================
-   ROAD
-========================= */
 
 #road {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-
-    width: min(100vw, 520px);
-    height: 100%;
-
-    background: #d8d8d8;
-
-    border-left: 5px solid #555;
-    border-right: 5px solid #555;
+    inset: 0;
+    background:
+        linear-gradient(
+            90deg,
+            #ccc 0%,
+            #ccc 8%,
+            #aaa 8%,
+            #aaa 92%,
+            #ccc 92%,
+            #ccc 100%
+        );
 }
 
 .lane-line {
     position: absolute;
-
     top: 0;
-
     width: 4px;
     height: 100%;
-
-    background:
-        repeating-linear-gradient(
-            to bottom,
-            #888 0px,
-            #888 35px,
-            transparent 35px,
-            transparent 70px
-        );
+    background: #eee;
 }
 
 #line1 {
-    left: 33.333%;
+    left: 33.33%;
 }
 
 #line2 {
-    left: 66.666%;
+    left: 66.66%;
 }
-
-/* =========================
-   SCORE
-========================= */
-
-#scoreBox {
-    position: absolute;
-
-    top: 15px;
-    left: 50%;
-
-    transform: translateX(-50%);
-
-    z-index: 50;
-
-    padding: 7px 18px;
-
-    background: white;
-
-    border: 3px solid #222;
-    border-radius: 12px;
-
-    font-size: 21px;
-    font-weight: bold;
-}
-
-#bestBox {
-    position: absolute;
-
-    top: 64px;
-    left: 50%;
-
-    transform: translateX(-50%);
-
-    z-index: 50;
-
-    font-size: 14px;
-    font-weight: bold;
-
-    color: #333;
-}
-
-/* =========================
-   ANGRY BIRD
-========================= */
 
 #player {
     position: absolute;
-
-    width: 62px;
-    height: 62px;
-
-    z-index: 20;
-
+    width: 64px;
+    height: 64px;
+    bottom: 90px;
+    left: 50%;
     transform: translateX(-50%);
-
-    transition: left 0.12s ease;
+    z-index: 10;
 }
 
-/* بدن قرمز */
-
-.bird {
+.body {
     position: absolute;
-
-    width: 62px;
-    height: 62px;
-
-    background: #e00000;
-
-    border: 4px solid #111;
-
-    border-radius:
-        50% 50%
-        45% 45%;
+    width: 54px;
+    height: 54px;
+    left: 5px;
+    top: 5px;
+    border-radius: 50%;
+    background: #d22;
 }
-
-/* ابروی چپ */
-
-.brow-left {
-    position: absolute;
-
-    width: 25px;
-    height: 8px;
-
-    background: #111;
-
-    left: 7px;
-    top: 11px;
-
-    transform: rotate(18deg);
-
-    border-radius: 5px;
-
-    z-index: 5;
-}
-
-/* ابروی راست */
-
-.brow-right {
-    position: absolute;
-
-    width: 25px;
-    height: 8px;
-
-    background: #111;
-
-    right: 7px;
-    top: 11px;
-
-    transform: rotate(-18deg);
-
-    border-radius: 5px;
-
-    z-index: 5;
-}
-
-/* چشم‌ها */
 
 .eye {
     position: absolute;
-
     width: 17px;
-    height: 17px;
-
+    height: 22px;
     background: white;
-
-    border: 3px solid #111;
-
     border-radius: 50%;
-
-    top: 20px;
-
-    z-index: 4;
+    top: 14px;
 }
 
-.eye::after {
-    content: "";
+.eye.left {
+    left: 12px;
+}
 
+.eye.right {
+    right: 12px;
+}
+
+.pupil {
     position: absolute;
-
-    width: 6px;
-    height: 6px;
-
+    width: 7px;
+    height: 9px;
     background: #111;
-
     border-radius: 50%;
-
-    left: 3px;
-    top: 3px;
+    top: 7px;
+    left: 5px;
 }
-
-.eye-left {
-    left: 11px;
-}
-
-.eye-right {
-    right: 11px;
-}
-
-/* منقار */
 
 .beak {
     position: absolute;
-
-    left: 50%;
-    top: 31px;
-
-    transform: translateX(-50%);
-
     width: 0;
     height: 0;
-
-    border-left: 14px solid transparent;
-    border-right: 14px solid transparent;
-
-    border-top: 20px solid #f2a900;
-
-    filter: drop-shadow(
-        0 3px 0 #111
-    );
-
-    z-index: 8;
+    border-top: 10px solid transparent;
+    border-bottom: 10px solid transparent;
+    border-left: 25px solid #e99b00;
+    right: -3px;
+    top: 29px;
 }
 
-/* قسمت بالای سر */
-
-.hair-left {
+.brow {
     position: absolute;
-
-    width: 18px;
-    height: 18px;
-
+    width: 25px;
+    height: 7px;
     background: #111;
-
-    left: 13px;
-    top: -7px;
-
-    transform: rotate(-35deg);
-
-    border-radius: 4px;
-
-    z-index: 1;
+    top: 7px;
+    border-radius: 5px;
 }
 
-.hair-right {
-    position: absolute;
-
-    width: 18px;
-    height: 18px;
-
-    background: #111;
-
-    right: 13px;
-    top: -7px;
-
-    transform: rotate(35deg);
-
-    border-radius: 4px;
-
-    z-index: 1;
+.brow.left {
+    left: 8px;
+    transform: rotate(12deg);
 }
 
-/* =========================
-   COIN
-========================= */
+.brow.right {
+    right: 8px;
+    transform: rotate(-12deg);
+}
 
 .coin {
     position: absolute;
-
-    width: 31px;
-    height: 31px;
-
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-
-    background: white;
-
-    border: 4px solid #222;
-
-    z-index: 10;
-
-    display: flex;
-    align-items: center;
-    justify-content: center;
-
-    font-size: 15px;
-    font-weight: bold;
+    background: #fff;
+    border: 5px solid #777;
+    z-index: 5;
 }
-
-/* =========================
-   OBSTACLE
-========================= */
 
 .obstacle {
     position: absolute;
-
-    width: 50px;
-    height: 50px;
-
-    background: #777;
-
-    border: 4px solid #222;
-
-    border-radius: 8px;
-
-    z-index: 8;
-}
-
-/* =========================
-   BUTTONS
-========================= */
-
-#controls {
-    position: absolute;
-
-    bottom: 24px;
-    left: 50%;
-
-    transform: translateX(-50%);
-
-    z-index: 60;
-
-    display: flex;
-
-    gap: 20px;
-}
-
-.control {
-    width: 72px;
+    width: 55px;
     height: 55px;
+    background: #555;
+    border-radius: 8px;
+    z-index: 5;
+}
 
-    background: white;
-
-    border: 3px solid #222;
-
-    border-radius: 12px;
-
-    font-size: 30px;
+#score {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    z-index: 20;
+    font-size: 22px;
     font-weight: bold;
 }
 
-.control:active {
-    background: #ddd;
-    transform: scale(.93);
+#best {
+    position: absolute;
+    top: 48px;
+    left: 18px;
+    z-index: 20;
+    font-size: 15px;
 }
 
-/* =========================
-   GAME OVER
-========================= */
-
-#gameOver {
+#gameover {
     position: absolute;
-
     inset: 0;
-
-    z-index: 100;
-
     display: none;
-
     align-items: center;
     justify-content: center;
-
     flex-direction: column;
-
-    background: rgba(255,255,255,.94);
-
-    text-align: center;
+    background: rgba(0,0,0,.75);
+    color: white;
+    z-index: 50;
 }
 
-#gameOver h1 {
-    font-size: 38px;
-    margin-bottom: 15px;
+#gameover h1 {
+    font-size: 36px;
 }
 
-#finalScore {
-    font-size: 22px;
-    margin-bottom: 10px;
-}
-
-#reward {
-    font-size: 18px;
-    margin-bottom: 25px;
-}
-
-#restart {
-    padding: 12px 30px;
-
-    background: white;
-
-    border: 3px solid #222;
-
+button {
+    border: none;
+    background: #fff;
+    color: #111;
+    padding: 14px 28px;
     border-radius: 12px;
+    font-size: 18px;
+    margin-top: 15px;
+}
 
-    font-size: 20px;
-    font-weight: bold;
+#status {
+    margin-top: 12px;
+    font-size: 14px;
+    text-align: center;
+    max-width: 280px;
+}
+
+.controls {
+    position: absolute;
+    bottom: 20px;
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    padding: 0 25px;
+    z-index: 30;
+}
+
+.controls button {
+    width: 70px;
+    height: 55px;
+    padding: 0;
+    font-size: 25px;
+    opacity: .8;
 }
 
 </style>
@@ -446,60 +239,58 @@ html, body {
 
 <div id="game">
 
-    <div id="road">
+    <div id="road"></div>
 
-        <div id="line1" class="lane-line"></div>
-        <div id="line2" class="lane-line"></div>
+    <div
+        class="lane-line"
+        id="line1"
+    ></div>
 
-        <!-- ANGRY BIRD -->
+    <div
+        class="lane-line"
+        id="line2"
+    ></div>
 
-        <div id="player">
+    <div id="score">
+        🏆 0
+    </div>
 
-            <div class="bird"></div>
+    <div id="best">
+        رکورد: 0
+    </div>
 
-            <div class="hair-left"></div>
-            <div class="hair-right"></div>
+    <div id="player">
 
-            <div class="brow-left"></div>
-            <div class="brow-right"></div>
+        <div class="body"></div>
 
-            <div class="eye eye-left"></div>
-            <div class="eye eye-right"></div>
+        <div class="brow left"></div>
+        <div class="brow right"></div>
 
-            <div class="beak"></div>
-
+        <div class="eye left">
+            <div class="pupil"></div>
         </div>
 
+        <div class="eye right">
+            <div class="pupil"></div>
+        </div>
+
+        <div class="beak"></div>
+
     </div>
 
+    <div class="controls">
 
-    <div id="scoreBox">
-        🏆 <span id="score">0</span>
-    </div>
-
-    <div id="bestBox">
-        رکورد: <span id="best">0</span>
-    </div>
-
-
-    <div id="controls">
-
-        <button
-            class="control"
-            id="left">
+        <button id="left">
             ◀
         </button>
 
-        <button
-            class="control"
-            id="right">
+        <button id="right">
             ▶
         </button>
 
     </div>
 
-
-    <div id="gameOver">
+    <div id="gameover">
 
         <h1>GAME OVER</h1>
 
@@ -508,7 +299,11 @@ html, body {
         </div>
 
         <div id="reward">
-            🪙 جایزه: +0 کوین
+            🪙 جایزه: 0
+        </div>
+
+        <div id="status">
+            در حال ثبت نتیجه...
         </div>
 
         <button id="restart">
@@ -519,12 +314,7 @@ html, body {
 
 </div>
 
-
 <script>
-
-/* =========================
-   TELEGRAM
-========================= */
 
 const tg = window.Telegram.WebApp;
 
@@ -532,105 +322,83 @@ tg.ready();
 tg.expand();
 
 
-/* =========================
-   ELEMENTS
-========================= */
+// ==================================================
+// IMPORTANT
+// آدرس Render سرویس رباتت را اینجا بگذار
+// مثال:
+// https://mybot.onrender.com
+// ==================================================
 
-const game =
-    document.getElementById("game");
-
-const road =
-    document.getElementById("road");
-
-const player =
-    document.getElementById("player");
-
-const scoreElement =
-    document.getElementById("score");
-
-const bestElement =
-    document.getElementById("best");
-
-const gameOverScreen =
-    document.getElementById("gameOver");
-
-const finalScore =
-    document.getElementById("finalScore");
-
-const reward =
-    document.getElementById("reward");
-
-const restart =
-    document.getElementById("restart");
+const BOT_API_URL = "https://fwlkhy.onrender.com/";
 
 
-/* =========================
-   VARIABLES
-========================= */
+const game = document.getElementById("game");
+const player = document.getElementById("player");
+
+const scoreText = document.getElementById("score");
+const bestText = document.getElementById("best");
+
+const gameover = document.getElementById("gameover");
+const finalScore = document.getElementById("finalScore");
+const reward = document.getElementById("reward");
+const statusText = document.getElementById("status");
+
+const leftButton = document.getElementById("left");
+const rightButton = document.getElementById("right");
+const restartButton = document.getElementById("restart");
+
 
 let lane = 1;
-
 let score = 0;
 
-let bestScore =
-    Number(
-        localStorage.getItem(
-            "subwayBirdBest"
-        )
-    ) || 0;
+let running = false;
+
+let speed = 5;
 
 let objects = [];
 
-let gameRunning = true;
+let spawnTimer = 0;
 
-let lastSpawn = 0;
-
-let speed = 4;
-
-let animation;
+let lastTime = 0;
 
 
-/* =========================
-   LANE
-========================= */
+// ==================================================
+// LOCAL BEST
+// ==================================================
 
-function getLaneX(number) {
+let bestScore = Number(
+    localStorage.getItem("subway_bird_best") || 0
+);
 
-    const laneWidth =
-        road.clientWidth / 3;
-
-    return (
-        laneWidth * number +
-        laneWidth / 2
-    );
-}
+bestText.textContent =
+    "رکورد: " + bestScore;
 
 
-/* =========================
-   PLAYER
-========================= */
+// ==================================================
+// PLAYER
+// ==================================================
 
 function updatePlayer() {
 
-    player.style.left =
-        getLaneX(lane) + "px";
+    const laneWidth =
+        game.clientWidth / 3;
 
-    player.style.top =
-        (
-            window.innerHeight - 155
-        ) + "px";
+    const x =
+        laneWidth * lane +
+        laneWidth / 2;
+
+    player.style.left =
+        x + "px";
 }
 
-updatePlayer();
 
-
-/* =========================
-   MOVEMENT
-========================= */
+// ==================================================
+// MOVE
+// ==================================================
 
 function moveLeft() {
 
-    if (!gameRunning)
+    if (!running)
         return;
 
     if (lane > 0) {
@@ -644,7 +412,7 @@ function moveLeft() {
 
 function moveRight() {
 
-    if (!gameRunning)
+    if (!running)
         return;
 
     if (lane < 2) {
@@ -656,143 +424,108 @@ function moveRight() {
 }
 
 
-/* =========================
-   BUTTONS
-========================= */
+leftButton.addEventListener(
+    "click",
+    moveLeft
+);
 
-document
-    .getElementById("left")
-    .addEventListener(
-        "click",
-        moveLeft
-    );
+rightButton.addEventListener(
+    "click",
+    moveRight
+);
 
-document
-    .getElementById("right")
-    .addEventListener(
-        "click",
-        moveRight
-    );
-
-
-/* =========================
-   KEYBOARD
-========================= */
 
 document.addEventListener(
     "keydown",
     function(e) {
 
-        if (
-            e.key ===
-            "ArrowLeft"
-        ) {
+        if (e.key === "ArrowLeft")
             moveLeft();
-        }
 
-        if (
-            e.key ===
-            "ArrowRight"
-        ) {
+        if (e.key === "ArrowRight")
             moveRight();
-        }
 
     }
 );
 
 
-/* =========================
-   SWIPE
-========================= */
+// ==================================================
+// SWIPE
+// ==================================================
 
-let touchStartX = 0;
+let touchX = 0;
 
 game.addEventListener(
     "touchstart",
     function(e) {
 
-        touchStartX =
+        touchX =
             e.touches[0].clientX;
+
     }
 );
-
 
 game.addEventListener(
     "touchend",
     function(e) {
 
-        const endX =
+        const x =
             e.changedTouches[0].clientX;
 
         const diff =
-            endX - touchStartX;
+            x - touchX;
 
-        if (
-            Math.abs(diff) < 30
-        )
+        if (Math.abs(diff) < 30)
             return;
 
-        if (diff < 0) {
-
+        if (diff < 0)
             moveLeft();
-
-        } else {
-
+        else
             moveRight();
-
-        }
 
     }
 );
 
 
-/* =========================
-   COIN
-========================= */
+// ==================================================
+// CREATE COIN
+// ==================================================
 
-function createCoin() {
+function createCoin(laneNumber) {
 
     const coin =
         document.createElement("div");
 
     coin.className = "coin";
 
-    coin.textContent = "●";
-
-    const coinLane =
-        Math.floor(
-            Math.random() * 3
-        );
+    const laneWidth =
+        game.clientWidth / 3;
 
     coin.style.left =
         (
-            getLaneX(coinLane) - 15
+            laneWidth * laneNumber +
+            laneWidth / 2 -
+            14
         ) + "px";
 
-    coin.style.top =
-        "-40px";
+    coin.style.top = "-40px";
 
-    road.appendChild(coin);
+    game.appendChild(coin);
 
     objects.push({
-
-        element: coin,
-
-        type: "coin",
-
-        lane: coinLane,
-
-        y: -40
-
+        el: coin,
+        lane: laneNumber,
+        y: -40,
+        type: "coin"
     });
 }
 
 
-/* =========================
-   OBSTACLE
-========================= */
+// ==================================================
+// CREATE OBSTACLE
+// ==================================================
 
-function createObstacle() {
+function createObstacle(laneNumber) {
 
     const obstacle =
         document.createElement("div");
@@ -800,98 +533,81 @@ function createObstacle() {
     obstacle.className =
         "obstacle";
 
-    const obstacleLane =
-        Math.floor(
-            Math.random() * 3
-        );
+    const laneWidth =
+        game.clientWidth / 3;
 
     obstacle.style.left =
         (
-            getLaneX(obstacleLane) - 25
+            laneWidth * laneNumber +
+            laneWidth / 2 -
+            27
         ) + "px";
 
-    obstacle.style.top =
-        "-60px";
+    obstacle.style.top = "-70px";
 
-    road.appendChild(
-        obstacle
-    );
+    game.appendChild(obstacle);
 
     objects.push({
-
-        element: obstacle,
-
-        type: "obstacle",
-
-        lane: obstacleLane,
-
-        y: -60
-
+        el: obstacle,
+        lane: laneNumber,
+        y: -70,
+        type: "obstacle"
     });
 }
 
 
-/* =========================
-   COLLISION
-========================= */
+// ==================================================
+// COLLISION
+// ==================================================
 
-function collision(object) {
+function collision(a, b) {
 
-    const playerTop =
-        window.innerHeight - 155;
+    const ar =
+        a.getBoundingClientRect();
 
-    const playerBottom =
-        playerTop + 62;
+    const br =
+        b.getBoundingClientRect();
 
-    const objectTop =
-        object.y;
-
-    const objectBottom =
-        object.y +
-        object.element.offsetHeight;
-
-    return (
-        object.lane === lane &&
-        objectBottom > playerTop &&
-        objectTop < playerBottom
+    return !(
+        ar.right < br.left ||
+        ar.left > br.right ||
+        ar.bottom < br.top ||
+        ar.top > br.bottom
     );
 }
 
 
-/* =========================
-   GAME LOOP
-========================= */
+// ==================================================
+// GAME LOOP
+// ==================================================
 
 function loop(timestamp) {
 
-    if (!gameRunning)
+    if (!running)
         return;
 
+    const delta =
+        timestamp - lastTime;
 
-    /* SPAWN */
+    lastTime = timestamp;
 
-    if (
-        timestamp - lastSpawn >
-        700
-    ) {
+    spawnTimer += delta;
 
-        if (
-            Math.random() < .65
-        ) {
+    if (spawnTimer > 650) {
 
-            createCoin();
+        spawnTimer = 0;
 
-        } else {
+        const randomLane =
+            Math.floor(
+                Math.random() * 3
+            );
 
-            createObstacle();
-
-        }
-
-        lastSpawn = timestamp;
+        if (Math.random() < .65)
+            createCoin(randomLane);
+        else
+            createObstacle(randomLane);
     }
 
-
-    /* OBJECTS */
 
     for (
         let i = objects.length - 1;
@@ -899,43 +615,36 @@ function loop(timestamp) {
         i--
     ) {
 
-        const object =
+        const obj =
             objects[i];
 
-        object.y += speed;
+        obj.y +=
+            speed *
+            (delta / 16.67);
 
-        object.element.style.top =
-            object.y + "px";
+        obj.el.style.top =
+            obj.y + "px";
 
 
-        /* COLLISION */
-
+        // collision
         if (
-            collision(object)
+            obj.lane === lane &&
+            collision(
+                player,
+                obj.el
+            )
         ) {
 
             if (
-                object.type ===
-                "obstacle"
-            ) {
-
-                endGame();
-
-                return;
-            }
-
-
-            if (
-                object.type ===
-                "coin"
+                obj.type === "coin"
             ) {
 
                 score++;
 
-                scoreElement.textContent =
-                    score;
+                scoreText.textContent =
+                    "🏆 " + score;
 
-                object.element.remove();
+                obj.el.remove();
 
                 objects.splice(
                     i,
@@ -943,18 +652,23 @@ function loop(timestamp) {
                 );
 
                 continue;
+
+            } else {
+
+                endGame();
+
+                return;
             }
         }
 
 
-        /* REMOVE */
-
+        // remove
         if (
-            object.y >
-            window.innerHeight + 100
+            obj.y >
+            game.clientHeight + 100
         ) {
 
-            object.element.remove();
+            obj.el.remove();
 
             objects.splice(
                 i,
@@ -964,177 +678,218 @@ function loop(timestamp) {
     }
 
 
-    /* SPEED */
-
+    // difficulty
     speed =
-        4 + score * .03;
-
-
-    animation =
-        requestAnimationFrame(
-            loop
+        5 +
+        Math.min(
+            score * .03,
+            5
         );
+
+
+    requestAnimationFrame(loop);
 }
 
 
-/* =========================
-   GAME OVER
-========================= */
+// ==================================================
+// START
+// ==================================================
 
-function endGame() {
+function startGame() {
 
-    if (!gameRunning)
-        return;
-
-    gameRunning = false;
-
-    cancelAnimationFrame(
-        animation
+    objects.forEach(
+        obj => obj.el.remove()
     );
 
+    objects = [];
 
-    /* BEST */
+    lane = 1;
+    score = 0;
+    speed = 5;
+    spawnTimer = 0;
+
+    updatePlayer();
+
+    scoreText.textContent =
+        "🏆 0";
+
+    bestText.textContent =
+        "رکورد: " + bestScore;
+
+    gameover.style.display =
+        "none";
+
+    statusText.textContent =
+        "";
+
+    running = true;
+
+    lastTime =
+        performance.now();
+
+    requestAnimationFrame(loop);
+}
+
+
+// ==================================================
+// SEND SCORE
+// ==================================================
+
+async function sendScore(score) {
+
+    const telegramUser =
+        tg.initDataUnsafe &&
+        tg.initDataUnsafe.user;
+
+    if (!telegramUser) {
+
+        throw new Error(
+            "Telegram user not found"
+        );
+    }
+
+
+    // ساخت شناسه یکتا
+    const gameId =
+        Date.now() +
+        "-" +
+        Math.random()
+            .toString(36)
+            .substring(2);
+
+
+    const response =
+        await fetch(
+            BOT_API_URL +
+            "/game-score",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify({
+
+                    user_id:
+                        telegramUser.id,
+
+                    name:
+                        telegramUser.first_name ||
+                        "کاربر",
+
+                    score:
+                        score,
+
+                    game_id:
+                        gameId
+                })
+            }
+        );
+
+
+    const data =
+        await response.json();
+
 
     if (
-        score > bestScore
+        !response.ok ||
+        !data.ok
     ) {
 
-        bestScore =
-            score;
+        throw new Error(
+            data.error ||
+            "ثبت نتیجه ناموفق بود"
+        );
+    }
+
+
+    return data;
+}
+
+
+// ==================================================
+// GAME OVER
+// ==================================================
+
+async function endGame() {
+
+    if (!running)
+        return;
+
+    running = false;
+
+    if (score > bestScore) {
+
+        bestScore = score;
 
         localStorage.setItem(
-            "subwayBirdBest",
+            "subway_bird_best",
             bestScore
         );
     }
 
 
-    bestElement.textContent =
-        bestScore;
-
-
     finalScore.textContent =
-        "امتیاز: " + score;
-
+        "🏆 امتیاز: " + score;
 
     reward.textContent =
-        "🪙 جایزه: +" +
+        "🪙 جایزه: " +
         (score * 5) +
         " کوین";
 
-
-    gameOverScreen.style.display =
+    gameover.style.display =
         "flex";
 
+    statusText.textContent =
+        "⏳ در حال ثبت جایزه...";
 
-    /* =========================
-       SEND DATA TO BOT
-    ========================= */
 
     try {
 
-        let gameId;
-
-        if (
-            window.crypto &&
-            crypto.randomUUID
-        ) {
-
-            gameId =
-                crypto.randomUUID();
-
-        } else {
-
-            gameId =
-                Date.now() +
-                "-" +
-                Math.random()
-                    .toString(36)
-                    .substring(2);
-
-        }
+        const result =
+            await sendScore(score);
 
 
-        tg.sendData(
+        reward.textContent =
+            "🪙 +" +
+            result.coins_awarded +
+            " کوین";
 
-            JSON.stringify({
-
-                action:
-                    "game_over",
-
-                score:
-                    score,
-
-                best:
-                    bestScore,
-
-                game_id:
-                    gameId
-
-            })
-
-        );
-
-        console.log(
-            "GAME DATA SENT:",
-            score
-        );
+        statusText.textContent =
+            "✅ جایزه به موجودیت اضافه شد!";
 
     } catch (error) {
 
         console.error(
-            "SEND DATA ERROR:",
+            "GAME SCORE ERROR:",
             error
         );
 
+        statusText.textContent =
+            "❌ ثبت جایزه ناموفق بود.";
     }
 }
 
 
-/* =========================
-   RESTART
-========================= */
+// ==================================================
+// RESTART
+// ==================================================
 
-restart.addEventListener(
+restartButton.addEventListener(
     "click",
-    function() {
-
-        location.reload();
-
-    }
+    startGame
 );
 
 
-/* =========================
-   START
-========================= */
+// ==================================================
+// INIT
+// ==================================================
 
-bestElement.textContent =
-    bestScore;
+updatePlayer();
 
-setTimeout(
-    function() {
-
-        updatePlayer();
-
-        animation =
-            requestAnimationFrame(
-                loop
-            );
-
-    },
-    300
-);
-
-
-/* =========================
-   RESIZE
-========================= */
-
-window.addEventListener(
-    "resize",
-    updatePlayer
-);
+startGame();
 
 </script>
 

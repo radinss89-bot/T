@@ -364,50 +364,79 @@ async def playerstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
 
-    if not update.message.reply_to_message:
+    reply = update.message.reply_to_message
+
+    if not reply:
         await update.message.reply_text(
-            "❌ روی پیام شخص Reply کن."
+            "❌ باید روی پیام شخص Reply کنی و بعد /playerstats رو بفرستی."
         )
         return
 
-    target = update.message.reply_to_message.from_user
+    target = reply.from_user
 
     if not target:
+        await update.message.reply_text(
+            "❌ نتونستم کاربر رو شناسایی کنم."
+        )
         return
 
+    user_id = target.id
     name = target.first_name or "کاربر"
 
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("""
-        SELECT name, score, games_played, best_score
-        FROM game_scores
-        WHERE user_id = %s
-    """, (target.id,))
+    try:
 
-    result = cur.fetchone()
+        cur.execute("""
+            SELECT
+                name,
+                score,
+                games_played,
+                best_score
+            FROM game_scores
+            WHERE user_id = %s
+        """, (user_id,))
 
-    cur.close()
-    conn.close()
+        result = cur.fetchone()
 
-    if not result:
+        if not result:
+            await update.message.reply_text(
+                f"🎮 {name} هنوز هیچ بازی‌ای ثبت نکرده."
+            )
+            return
+
+        db_name, last_score, games_played, best_score = result
+
+        cur.execute("""
+            SELECT COALESCE(SUM(score), 0)
+            FROM game_results
+            WHERE user_id = %s
+        """, (user_id,))
+
+        total_score = cur.fetchone()[0]
+
         await update.message.reply_text(
-            f"🎮 {name} هنوز بازی نکرده."
+            f"🎮 آمار بازیکن\n\n"
+            f"👤 نام: {db_name}\n"
+            f"🆔 ID: {user_id}\n"
+            f"🕹 تعداد بازی: {games_played}\n"
+            f"📊 آخرین امتیاز: {last_score}\n"
+            f"➕ مجموع امتیازها: {total_score}\n"
+            f"🏆 رکورد: {best_score}"
         )
-        return
 
-    db_name, score, games_played, best_score = result
+    except Exception as e:
 
-    await update.message.reply_text(
-        f"🎮 آمار بازیکن\n\n"
-        f"👤 نام: {db_name}\n"
-        f"🆔 ID: {target.id}\n"
-        f"🕹 تعداد بازی: {games_played}\n"
-        f"📊 آخرین امتیاز: {score}\n"
-        f"🏆 رکورد: {best_score}"
-    )
+        print("PLAYER STATS ERROR:", e)
 
+        await update.message.reply_text(
+            "❌ خطا در گرفتن آمار بازیکن."
+        )
+
+    finally:
+        cur.close()
+        conn.close()
 
 # =========================
 # START
@@ -1187,6 +1216,10 @@ def main():
         )
     )
 
+    app.add_handler(
+        CommandHandler("playerstats",                 playerstats) 
+        )
+    )
     print("🤖 ربات روشن شد...")
 
     app.run_polling()

@@ -1,13 +1,15 @@
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
+
 <head>
     <meta charset="UTF-8">
+
     <meta
         name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     >
 
-    <title>papt pipt poptMarket</title>
+    <title>pupt pipt poptMarket</title>
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
@@ -18,164 +20,267 @@
 
 <div class="app">
 
-    <header class="topbar">
+    <!-- HEADER -->
+
+    <header class="header">
+
         <div>
-            <h1>📈 p³ Market</h1>
-            <span class="status">● آنلاین</span>
+            <div class="logo">p³</div>
+            <div class="subtitle">بازار مجازی</div>
         </div>
 
-        <div class="wallet-box">
-            <span>موجودی</span>
-            <strong id="wallet">...</strong>
-            <small>🪙 کوین</small>
+        <div class="status">
+            <span></span>
+            آنلاین
         </div>
+
     </header>
 
 
-    <main>
+    <!-- WALLET -->
 
-        <!-- MARKET -->
+    <section class="wallet-card">
 
-        <section class="card market-card">
+        <div class="wallet-title">
+            موجودی شما
+        </div>
 
-            <div class="market-header">
-                <div>
-                    <span class="label">بازار</span>
-                    <h2 id="stockName">BETA</h2>
+        <div class="wallet-value">
+            <span id="wallet">...</span>
+        </div>
+
+        <div class="coin-label">
+            🪙 کوین
+        </div>
+
+    </section>
+
+
+    <!-- MARKET -->
+
+    <section class="market-card">
+
+        <div class="market-top">
+
+            <div>
+                <div class="market-name" id="marketName">
+                    BetaCoin
                 </div>
 
-                <div class="price-box">
-                    <span id="price">...</span>
-                    <small>🪙</small>
+                <div class="market-desc">
+                    قیمت لحظه‌ای
                 </div>
             </div>
 
-            <div class="change" id="change">
-                در حال دریافت...
+            <div
+                class="market-change"
+                id="marketChange"
+            >
+                --
             </div>
 
-            <canvas id="chart"></canvas>
-
-        </section>
+        </div>
 
 
-        <!-- TRADE -->
-
-        <section class="card">
-
-            <h2>معامله</h2>
-
-            <div class="amount-box">
-                <label>تعداد</label>
-
-                <input
-                    id="amount"
-                    type="number"
-                    min="1"
-                    value="1"
-                    inputmode="numeric"
-                >
-            </div>
-
-            <div class="buttons">
-
-                <button
-                    id="buyBtn"
-                    class="buy"
-                    onclick="buyStock()"
-                >
-                    🟢 خرید
-                </button>
-
-                <button
-                    id="sellBtn"
-                    class="sell"
-                    onclick="sellStock()"
-                >
-                    🔴 فروش
-                </button>
-
-            </div>
-
-        </section>
-
-
-        <!-- PORTFOLIO -->
-
-        <section class="card">
-
-            <h2>دارایی من</h2>
-
-            <div class="portfolio">
-
-                <div>
-                    <span>تعداد BETA</span>
-                    <strong id="shares">0</strong>
-                </div>
-
-                <div>
-                    <span>ارزش دارایی</span>
-                    <strong id="portfolioValue">0</strong>
-                </div>
-
-            </div>
-
-        </section>
-
-
-        <!-- ADMIN -->
-
-        <section
-            id="adminPanel"
-            class="card admin"
-            style="display:none;"
+        <div
+            class="price"
+            id="price"
         >
+            ...
+        </div>
 
-            <h2>⚙️ پنل مدیریت</h2>
 
-            <label>قیمت جدید</label>
+        <div class="chart">
+
+            <canvas
+                id="chart"
+                width="700"
+                height="250"
+            ></canvas>
+
+        </div>
+
+    </section>
+
+
+    <!-- PORTFOLIO -->
+
+    <section class="portfolio">
+
+        <div class="section-title">
+            دارایی من
+        </div>
+
+        <div class="portfolio-grid">
+
+            <div class="info-box">
+
+                <span>
+                    مقدار
+                </span>
+
+                <strong id="holding">
+                    ...
+                </strong>
+
+            </div>
+
+
+            <div class="info-box">
+
+                <span>
+                    ارزش دارایی
+                </span>
+
+                <strong id="holdingValue">
+                    ...
+                </strong>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- TRADE -->
+
+    <section class="trade">
+
+        <div class="section-title">
+            معامله
+        </div>
+
+
+        <div class="amount-box">
+
+            <label>
+                مقدار
+            </label>
+
+            <input
+                id="amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value="1"
+                placeholder="مثلاً 1"
+            >
+
+        </div>
+
+
+        <div class="trade-buttons">
+
+            <button
+                id="buyBtn"
+                class="buy"
+            >
+                خرید
+            </button>
+
+            <button
+                id="sellBtn"
+                class="sell"
+            >
+                فروش
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- ADMIN -->
+
+    <section
+        id="adminPanel"
+        class="admin"
+        style="display:none;"
+    >
+
+        <div class="section-title">
+            پنل مدیریت
+        </div>
+
+
+        <div class="admin-box">
+
+            <label>
+                قیمت جدید
+            </label>
 
             <input
                 id="adminPrice"
                 type="number"
-                min="1"
+                min="0.01"
+                step="0.01"
             >
 
-            <button onclick="changePrice()">
+            <button id="setPriceBtn">
                 تغییر قیمت
             </button>
 
+        </div>
 
-            <hr>
 
-            <label>حداقل تغییر درصد</label>
+        <div class="admin-box">
+
+            <label>
+                حداقل تغییر درصدی
+            </label>
 
             <input
                 id="minChange"
                 type="number"
-                value="-10"
+                value="-5"
             >
 
-            <label>حداکثر تغییر درصد</label>
+            <label>
+                حداکثر تغییر درصدی
+            </label>
 
             <input
                 id="maxChange"
                 type="number"
-                value="10"
+                value="5"
             >
 
-            <button onclick="changeRandomSettings()">
+            <label class="switch-row">
+
+                <span>
+                    تغییر خودکار
+                </span>
+
+                <input
+                    id="autoChange"
+                    type="checkbox"
+                    checked
+                >
+
+            </label>
+
+            <button id="saveSettingsBtn">
                 ذخیره تنظیمات
             </button>
 
-        </section>
+        </div>
 
-    </main>
+    </section>
+
+
+    <div
+        id="message"
+        class="message"
+    ></div>
+
+
+    <footer>
+        Beta Market
+    </footer>
 
 </div>
 
-
-<div id="toast"></div>
 
 <script src="app.js"></script>
 

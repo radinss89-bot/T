@@ -1,14 +1,6 @@
-// ========================================
-// تنظیمات
-// ========================================
-
-// آدرس API رباتت را اینجا قرار بده
-const API_URL = "https://api.render.com/deploy/srv-dae3kt740ujc73dm3ljg?key=_pk18dbgRvQ";
-
-
-// ========================================
+// =========================================================
 // TELEGRAM
-// ========================================
+// =========================================================
 
 const tg = window.Telegram.WebApp;
 
@@ -16,89 +8,159 @@ tg.ready();
 tg.expand();
 
 
-// کاربر فعلی تلگرام
-const telegramUser = tg.initDataUnsafe?.user;
+// =========================================================
+// API
+// =========================================================
 
-const userId = telegramUser?.id;
+// اینجا آدرس Web Service رباتت را بگذار.
+// مثال:
+// https://my-bot.onrender.com
+
+const API_URL = "https://YOUR-BOT-WEB-SERVICE.onrender.com";
 
 
-// ========================================
+// =========================================================
+// USER
+// =========================================================
+
+const userId =
+    tg.initDataUnsafe?.user?.id || null;
+
+
+// =========================================================
 // ELEMENTS
-// ========================================
+// =========================================================
 
-const walletElement = document.getElementById("wallet");
-const stockNameElement = document.getElementById("stockName");
-const priceElement = document.getElementById("price");
-const changeElement = document.getElementById("change");
-const sharesElement = document.getElementById("shares");
-const portfolioValueElement =
-    document.getElementById("portfolioValue");
+const walletElement =
+    document.getElementById("wallet");
 
-const canvas = document.getElementById("chart");
-const ctx = canvas.getContext("2d");
+const priceElement =
+    document.getElementById("price");
+
+const marketNameElement =
+    document.getElementById("marketName");
+
+const marketChangeElement =
+    document.getElementById("marketChange");
+
+const holdingElement =
+    document.getElementById("holding");
+
+const holdingValueElement =
+    document.getElementById("holdingValue");
+
+const amountElement =
+    document.getElementById("amount");
+
+const messageElement =
+    document.getElementById("message");
+
+const adminPanel =
+    document.getElementById("adminPanel");
+
+const adminPrice =
+    document.getElementById("adminPrice");
+
+const minChange =
+    document.getElementById("minChange");
+
+const maxChange =
+    document.getElementById("maxChange");
+
+const autoChange =
+    document.getElementById("autoChange");
 
 
-// ========================================
+// =========================================================
 // DATA
-// ========================================
+// =========================================================
 
 let currentPrice = 0;
-let currentShares = 0;
+
+let previousPrice = null;
 
 let chartPrices = [];
 
 
-// ========================================
-// TOAST
-// ========================================
+// =========================================================
+// FORMAT
+// =========================================================
 
-function toast(message) {
+function formatNumber(value) {
 
-    const element = document.getElementById("toast");
+    return Number(value || 0)
+        .toLocaleString("fa-IR", {
+            maximumFractionDigits: 2
+        });
+}
 
-    element.textContent = message;
-    element.classList.add("show");
+
+// =========================================================
+// MESSAGE
+// =========================================================
+
+function showMessage(text) {
+
+    messageElement.textContent = text;
 
     setTimeout(() => {
-        element.classList.remove("show");
-    }, 2500);
+
+        messageElement.textContent = "";
+
+    }, 3000);
 }
 
 
-// ========================================
-// NUMBER FORMAT
-// ========================================
+// =========================================================
+// API HELPER
+// =========================================================
 
-function formatNumber(number) {
+async function api(path, options = {}) {
 
-    return Number(number || 0).toLocaleString("fa-IR");
+    const response = await fetch(
+        `${API_URL}${path}`,
+        {
+            ...options,
+
+            headers: {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            }
+        }
+    );
+
+    const data =
+        await response.json();
+
+    if (!response.ok || data.ok === false) {
+
+        throw new Error(
+            data.error || "خطا در ارتباط با سرور"
+        );
+    }
+
+    return data;
 }
 
 
-// ========================================
+// =========================================================
 // WALLET
-// ========================================
+// =========================================================
 
 async function loadWallet() {
 
     if (!userId) {
 
-        walletElement.textContent = "نامشخص";
+        walletElement.textContent =
+            "نامشخص";
 
         return;
     }
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/wallet/${userId}`
-        );
-
-        if (!response.ok) {
-            throw new Error("Wallet request failed");
-        }
-
-        const data = await response.json();
+        const data =
+            await api(`/wallet/${userId}`);
 
         walletElement.textContent =
             formatNumber(data.coins);
@@ -107,140 +169,125 @@ async function loadWallet() {
 
         console.error(error);
 
-        walletElement.textContent = "خطا";
+        walletElement.textContent =
+            "خطا";
     }
 }
 
 
-// ========================================
+// =========================================================
 // MARKET
-// ========================================
+// =========================================================
 
 async function loadMarket() {
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/market`
-        );
+        const data =
+            await api("/market");
 
-        if (!response.ok) {
-            throw new Error("Market request failed");
-        }
+        const market =
+            data.market;
 
-        const data = await response.json();
+        currentPrice =
+            Number(market.price);
 
-        currentPrice = Number(data.price || 0);
-
-        stockNameElement.textContent =
-            data.name || "BETA";
+        marketNameElement.textContent =
+            market.name;
 
         priceElement.textContent =
             formatNumber(currentPrice);
 
+        adminPrice.value =
+            currentPrice;
 
-        // تغییر قیمت
+        minChange.value =
+            Number(market.min_change * 100)
+                .toFixed(2);
 
-        let change =
-            data.change ?? data.change_percent ?? 0;
+        maxChange.value =
+            Number(market.max_change * 100)
+                .toFixed(2);
 
-        change = Number(change);
+        autoChange.checked =
+            market.auto_change;
 
-        if (change > 0) {
+        updateChange();
 
-            changeElement.textContent =
-                `▲ +${change}%`;
-
-        } else if (change < 0) {
-
-            changeElement.textContent =
-                `▼ ${change}%`;
-
-        } else {
-
-            changeElement.textContent =
-                "بدون تغییر";
-        }
-
-
-        // قیمت برای نمودار
-
-        chartPrices.push(currentPrice);
-
-        if (chartPrices.length > 30) {
-            chartPrices.shift();
-        }
-
-        drawChart();
+        addChartPrice(currentPrice);
 
     } catch (error) {
 
         console.error(error);
 
-        priceElement.textContent = "خطا";
-        changeElement.textContent =
-            "اتصال به بازار برقرار نشد";
+        priceElement.textContent =
+            "خطا";
     }
 }
 
 
-// ========================================
-// PORTFOLIO
-// ========================================
+// =========================================================
+// PRICE CHANGE
+// =========================================================
 
-async function loadPortfolio() {
+function updateChange() {
 
-    if (!userId) {
+    if (
+        previousPrice === null ||
+        previousPrice === 0
+    ) {
+
+        marketChangeElement.textContent =
+            "--";
+
         return;
     }
 
-    try {
+    const change =
+        ((currentPrice - previousPrice)
+            / previousPrice) * 100;
 
-        const response = await fetch(
-            `${API_URL}/portfolio/${userId}`
-        );
+    const sign =
+        change >= 0 ? "+" : "";
 
-        if (!response.ok) {
-            return;
-        }
+    marketChangeElement.textContent =
+        `${sign}${change.toFixed(2)}%`;
 
-        const data = await response.json();
-
-        currentShares =
-            Number(data.shares || 0);
-
-        sharesElement.textContent =
-            formatNumber(currentShares);
-
-        portfolioValueElement.textContent =
-            formatNumber(
-                currentShares * currentPrice
-            );
-
-    } catch (error) {
-
-        console.log(
-            "Portfolio هنوز در API ساخته نشده."
-        );
-    }
+    previousPrice =
+        currentPrice;
 }
 
 
-// ========================================
+// =========================================================
 // CHART
-// ========================================
+// =========================================================
+
+function addChartPrice(price) {
+
+    chartPrices.push(price);
+
+    if (chartPrices.length > 40) {
+
+        chartPrices.shift();
+    }
+
+    drawChart();
+}
+
 
 function drawChart() {
 
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
+    const canvas =
+        document.getElementById("chart");
 
-    const dpr = window.devicePixelRatio || 1;
+    const ctx =
+        canvas.getContext("2d");
 
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    const width =
+        canvas.width;
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const height =
+        canvas.height;
 
     ctx.clearRect(
         0,
@@ -249,115 +296,160 @@ function drawChart() {
         height
     );
 
-
     if (chartPrices.length < 2) {
         return;
     }
 
-
-    const min =
+    let min =
         Math.min(...chartPrices);
 
-    const max =
+    let max =
         Math.max(...chartPrices);
 
-    const range =
-        max - min || 1;
+    if (min === max) {
 
+        min -= 1;
+        max += 1;
+    }
+
+    const padding = 20;
 
     ctx.beginPath();
 
+    chartPrices.forEach(
+        (price, index) => {
 
-    chartPrices.forEach((value, index) => {
+            const x =
+                padding +
+                (
+                    index /
+                    (chartPrices.length - 1)
+                ) *
+                (width - padding * 2);
 
-        const x =
-            (index / (chartPrices.length - 1))
-            * width;
+            const y =
+                height -
+                padding -
+                (
+                    (price - min) /
+                    (max - min)
+                ) *
+                (height - padding * 2);
 
-        const y =
-            height -
-            ((value - min) / range)
-            * (height - 15)
-            - 5;
+            if (index === 0) {
 
+                ctx.moveTo(x, y);
 
-        if (index === 0) {
-            ctx.moveTo(x, y);
-        } else {
-            ctx.lineTo(x, y);
+            } else {
+
+                ctx.lineTo(x, y);
+            }
         }
+    );
 
-    });
-
+    ctx.lineWidth = 4;
 
     ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
+
+    ctx.lineCap = "round";
+
+    ctx.lineJoin = "round";
 
     ctx.stroke();
 }
 
 
-// ========================================
+// =========================================================
+// PORTFOLIO
+// =========================================================
+
+async function loadPortfolio() {
+
+    if (!userId) {
+
+        holdingElement.textContent =
+            "نامشخص";
+
+        holdingValueElement.textContent =
+            "نامشخص";
+
+        return;
+    }
+
+    try {
+
+        const data =
+            await api(
+                `/portfolio/${userId}`
+            );
+
+        holdingElement.textContent =
+            formatNumber(data.amount);
+
+        holdingValueElement.textContent =
+            formatNumber(data.value);
+
+    } catch (error) {
+
+        console.error(error);
+
+        holdingElement.textContent =
+            "خطا";
+
+        holdingValueElement.textContent =
+            "خطا";
+    }
+}
+
+
+// =========================================================
 // BUY
-// ========================================
+// =========================================================
 
-async function buyStock() {
+async function buy() {
 
     if (!userId) {
 
-        toast("کاربر تلگرام پیدا نشد");
+        showMessage(
+            "کاربر تلگرام شناسایی نشد"
+        );
 
         return;
     }
 
     const amount =
-        Number(
-            document.getElementById("amount").value
+        Number(amountElement.value);
+
+    if (
+        !amount ||
+        amount <= 0
+    ) {
+
+        showMessage(
+            "مقدار نامعتبر است"
         );
-
-
-    if (!amount || amount <= 0) {
-
-        toast("تعداد نامعتبر است");
 
         return;
     }
 
-
     try {
 
-        const response = await fetch(
-            `${API_URL}/buy`,
-            {
-                method: "POST",
+        const data =
+            await api(
+                "/buy",
+                {
+                    method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    user_id: userId,
-                    amount: amount
-                })
-            }
-        );
-
-
-        const data = await response.json();
-
-
-        if (!response.ok) {
-
-            toast(
-                data.error ||
-                "خرید انجام نشد"
+                    body: JSON.stringify({
+                        user_id: userId,
+                        amount: amount
+                    })
+                }
             );
 
-            return;
-        }
-
-
-        toast("خرید با موفقیت انجام شد ✅");
+        showMessage(
+            `خرید انجام شد؛ ${formatNumber(data.cost)} کوین کم شد`
+        );
 
         await loadWallet();
         await loadPortfolio();
@@ -366,73 +458,61 @@ async function buyStock() {
 
         console.error(error);
 
-        toast("خطا در اتصال به سرور");
+        showMessage(
+            error.message
+        );
     }
 }
 
 
-// ========================================
+// =========================================================
 // SELL
-// ========================================
+// =========================================================
 
-async function sellStock() {
+async function sell() {
 
     if (!userId) {
 
-        toast("کاربر تلگرام پیدا نشد");
-
-        return;
-    }
-
-
-    const amount =
-        Number(
-            document.getElementById("amount").value
+        showMessage(
+            "کاربر تلگرام شناسایی نشد"
         );
 
-
-    if (!amount || amount <= 0) {
-
-        toast("تعداد نامعتبر است");
-
         return;
     }
 
+    const amount =
+        Number(amountElement.value);
+
+    if (
+        !amount ||
+        amount <= 0
+    ) {
+
+        showMessage(
+            "مقدار نامعتبر است"
+        );
+
+        return;
+    }
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/sell`,
-            {
-                method: "POST",
+        const data =
+            await api(
+                "/sell",
+                {
+                    method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify({
-                    user_id: userId,
-                    amount: amount
-                })
-            }
-        );
-
-
-        const data = await response.json();
-
-
-        if (!response.ok) {
-
-            toast(
-                data.error ||
-                "فروش انجام نشد"
+                    body: JSON.stringify({
+                        user_id: userId,
+                        amount: amount
+                    })
+                }
             );
 
-            return;
-        }
-
-
-        toast("فروش با موفقیت انجام شد ✅");
+        showMessage(
+            `فروش انجام شد؛ ${formatNumber(data.revenue)} کوین گرفتی`
+        );
 
         await loadWallet();
         await loadPortfolio();
@@ -441,41 +521,44 @@ async function sellStock() {
 
         console.error(error);
 
-        toast("خطا در اتصال به سرور");
+        showMessage(
+            error.message
+        );
     }
 }
 
 
-// ========================================
+// =========================================================
 // ADMIN PRICE
-// ========================================
+// =========================================================
 
-async function changePrice() {
+async function setAdminPrice() {
+
+    if (!userId) {
+        return;
+    }
 
     const price =
-        Number(
-            document.getElementById("adminPrice").value
+        Number(adminPrice.value);
+
+    if (
+        !price ||
+        price <= 0
+    ) {
+
+        showMessage(
+            "قیمت نامعتبر است"
         );
-
-
-    if (!price || price <= 0) {
-
-        toast("قیمت نامعتبر است");
 
         return;
     }
 
-
     try {
 
-        const response = await fetch(
-            `${API_URL}/admin/price`,
+        await api(
+            "/admin/price",
             {
                 method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
 
                 body: JSON.stringify({
                     user_id: userId,
@@ -484,128 +567,188 @@ async function changePrice() {
             }
         );
 
+        showMessage(
+            "قیمت تغییر کرد"
+        );
 
-        const data = await response.json();
-
-
-        if (!response.ok) {
-
-            toast(
-                data.error ||
-                "تغییر قیمت انجام نشد"
-            );
-
-            return;
-        }
-
-
-        toast("قیمت تغییر کرد ✅");
+        previousPrice =
+            currentPrice;
 
         await loadMarket();
 
     } catch (error) {
 
-        toast("خطا در اتصال به سرور");
+        console.error(error);
+
+        showMessage(
+            error.message
+        );
     }
 }
 
 
-// ========================================
-// ADMIN RANDOM SETTINGS
-// ========================================
+// =========================================================
+// ADMIN SETTINGS
+// =========================================================
 
-async function changeRandomSettings() {
+async function saveAdminSettings() {
 
-    const minChange =
-        Number(
-            document.getElementById("minChange").value
-        );
+    if (!userId) {
+        return;
+    }
 
-    const maxChange =
-        Number(
-            document.getElementById("maxChange").value
-        );
+    const min =
+        Number(minChange.value);
 
+    const max =
+        Number(maxChange.value);
 
     try {
 
-        const response = await fetch(
-            `${API_URL}/admin/random`,
+        await api(
+            "/admin/settings",
             {
                 method: "POST",
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
                 body: JSON.stringify({
                     user_id: userId,
-                    min_change: minChange,
-                    max_change: maxChange,
-                    random_enabled: true
+
+                    min_change: min,
+
+                    max_change: max,
+
+                    auto_change:
+                        autoChange.checked
                 })
             }
         );
 
-
-        const data = await response.json();
-
-
-        if (!response.ok) {
-
-            toast(
-                data.error ||
-                "تنظیمات ذخیره نشد"
-            );
-
-            return;
-        }
-
-
-        toast("تنظیمات ذخیره شد ✅");
+        showMessage(
+            "تنظیمات ذخیره شد"
+        );
 
     } catch (error) {
 
-        toast("خطا در اتصال به سرور");
+        console.error(error);
+
+        showMessage(
+            error.message
+        );
     }
 }
 
 
-// ========================================
-// LOAD EVERYTHING
-// ========================================
+// =========================================================
+// ADMIN CHECK
+// =========================================================
 
-async function loadAll() {
+function checkAdmin() {
+
+    // همان ADMIN_ID داخل bot.py
+
+    const ADMIN_ID =
+        6235380364;
+
+    if (
+        userId &&
+        Number(userId) === ADMIN_ID
+    ) {
+
+        adminPanel.style.display =
+            "block";
+    }
+}
+
+
+// =========================================================
+// BUTTONS
+// =========================================================
+
+document
+    .getElementById("buyBtn")
+    .addEventListener(
+        "click",
+        buy
+    );
+
+
+document
+    .getElementById("sellBtn")
+    .addEventListener(
+        "click",
+        sell
+    );
+
+
+document
+    .getElementById("setPriceBtn")
+    .addEventListener(
+        "click",
+        setAdminPrice
+    );
+
+
+document
+    .getElementById("saveSettingsBtn")
+    .addEventListener(
+        "click",
+        saveAdminSettings
+    );
+
+
+// =========================================================
+// AUTO REFRESH
+// =========================================================
+
+async function refresh() {
+
+    try {
+
+        const oldPrice =
+            currentPrice;
+
+        await loadMarket();
+
+        if (
+            oldPrice &&
+            currentPrice !== oldPrice
+        ) {
+
+            addChartPrice(
+                currentPrice
+            );
+        }
+
+        await loadWallet();
+
+        await loadPortfolio();
+
+    } catch (error) {
+
+        console.error(error);
+    }
+}
+
+
+// =========================================================
+// START
+// =========================================================
+
+async function start() {
+
+    checkAdmin();
 
     await loadWallet();
 
     await loadMarket();
 
     await loadPortfolio();
+
+    setInterval(
+        refresh,
+        10000
+    );
 }
 
 
-loadAll();
-
-
-// ========================================
-// AUTO REFRESH
-// ========================================
-
-setInterval(() => {
-
-    loadWallet();
-    loadMarket();
-    loadPortfolio();
-
-}, 10000);
-
-
-// ========================================
-// RESIZE
-// ========================================
-
-window.addEventListener(
-    "resize",
-    drawChart
-);
+start();

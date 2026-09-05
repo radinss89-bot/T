@@ -3,6 +3,7 @@ import time
 import json
 import logging
 from threading import Thread
+import random
 
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
@@ -1838,3 +1839,671 @@ def main():
 if __name__ == "__main__":
 
     main()
+# =========================================================
+# MARKET API
+# =========================================================
+
+MARKET_ID = 1
+
+
+def market_get():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                name,
+                price,
+                min_change,
+                max_change,
+                auto_change
+            FROM market
+            WHERE id = %s
+        """, (MARKET_ID,))
+
+        row = cur.fetchone()
+
+        if row is None:
+            cur.execute("""
+                INSERT INTO market (
+                    id,
+                    name,
+                    price,
+                    min_change,
+                    max_change,
+                    auto_change,
+                    updated_at
+                )
+                VALUES (
+                    %s,
+                    'BetaCoin',
+                    100,
+                    -0.05,
+                    0.05,
+                    TRUE,
+                    %s
+                )
+            """, (MARKET_ID, time.time()))
+
+            conn.commit()
+
+            return {
+                "name": "BetaCoin",
+                "price": 100,
+                "min_change": -0.05,
+                "max_change": 0.05,
+                "auto_change": True
+            }
+
+        return {
+            "name": row[0],
+            "price": float(row[1]),
+            "min_change": float(row[2]),
+            "max_change": float(row[3]),
+            "auto_change": bool(row[4])
+        }
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+def market_change_price():
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                price,
+                min_change,
+                max_change,
+                auto_change
+            FROM market
+            WHERE id = %s
+            FOR UPDATE
+        """, (MARKET_ID,))
+
+        row = cur.fetchone()
+
+        if row is None:
+            return None
+
+        price = float(row[0])
+        min_change = float(row[1])
+        max_change = float(row[2])
+        auto_change = bool(row[3])
+
+        if not auto_change:
+            return price
+
+        change = random.uniform(
+            min_change,
+            max_change
+        )
+
+        new_price = price * (1 + change)
+
+        # جلوگیری از صفر یا منفی شدن قیمت
+        new_price = max(0.01, new_price)
+
+        cur.execute("""
+            UPDATE market
+            SET price = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (
+            new_price,
+            time.time(),
+            MARKET_ID
+        ))
+
+        cur.execute("""
+            INSERT INTO market_history (
+                price,
+                created_at
+            )
+            VALUES (%s, %s)
+        """, (
+            new_price,
+            time.time()
+        ))
+
+        conn.commit()
+
+        return new_price
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        raise
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# MARKET INFO
+# =========================================================
+
+@web.get("/market")
+def market_api():
+
+    try:
+        market = market_get()
+
+        return jsonify({
+            "ok": True,
+            "market": market
+        })
+
+    except Exception:
+        logger.exception("MARKET API ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "market error"
+        }), 500
+
+
+# =========================================================
+# WALLET
+# =========================================================
+
+@web.get("/wallet/<int:user_id>")
+def wallet_api(user_id):
+
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT coins
+            FROM users
+            WHERE user_id = %s
+        """, (user_id,))
+
+        row = cur.fetchone()
+
+        if row is None:
+            return jsonify({
+                "ok": True,
+                "coins": 0
+            })
+
+        return jsonify({
+            "ok": True,
+            "coins": int(row[0])
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("WALLET API ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "database error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# HOLDING
+# =========================================================
+
+@web.get("/portfolio/<int:user_id>")
+def portfolio_api(user_id):
+
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT amount
+            FROM market_holdings
+            WHERE user_id = %s
+        """, (user_id,))
+
+        row = cur.fetchone()
+
+        amount = 0
+
+        if row:
+            amount = float(row[0])
+
+        market = market_get()
+
+        value = amount * market["price"]
+
+        return jsonify({
+            "ok": True,
+            "amount": amount,
+            "value": value
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("PORTFOLIO API ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "portfolio error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# BUY
+# =========================================================
+
+@web.post("/buy")
+def buy_api():
+
+    conn = None
+    cur = None
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = int(data.get("user_id", 0))
+        amount = float(data.get("amount", 0))
+
+        if user_id <= 0:
+            return jsonify({
+                "ok": False,
+                "error": "invalid user"
+            }), 400
+
+        if amount <= 0:
+            return jsonify({
+                "ok": False,
+                "error": "invalid amount"
+            }), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Lock user row
+        cur.execute("""
+            SELECT coins
+            FROM users
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (user_id,))
+
+        user = cur.fetchone()
+
+        if user is None:
+            return jsonify({
+                "ok": False,
+                "error": "user not found"
+            }), 404
+
+        coins = int(user[0])
+
+        market = market_get()
+
+        price = market["price"]
+
+        cost = amount * price
+
+        if cost > coins:
+            return jsonify({
+                "ok": False,
+                "error": "not enough coins"
+            }), 400
+
+        # Deduct coins
+        cur.execute("""
+            UPDATE users
+            SET coins = coins - %s
+            WHERE user_id = %s
+        """, (
+            int(round(cost)),
+            user_id
+        ))
+
+        # Add holding
+        cur.execute("""
+            INSERT INTO market_holdings (
+                user_id,
+                amount
+            )
+            VALUES (%s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                amount = market_holdings.amount + EXCLUDED.amount
+        """, (
+            user_id,
+            amount
+        ))
+
+        conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "amount": amount,
+            "price": price,
+            "cost": int(round(cost)),
+            "coins": coins - int(round(cost))
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("BUY API ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "buy error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# SELL
+# =========================================================
+
+@web.post("/sell")
+def sell_api():
+
+    conn = None
+    cur = None
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = int(data.get("user_id", 0))
+        amount = float(data.get("amount", 0))
+
+        if user_id <= 0:
+            return jsonify({
+                "ok": False,
+                "error": "invalid user"
+            }), 400
+
+        if amount <= 0:
+            return jsonify({
+                "ok": False,
+                "error": "invalid amount"
+            }), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT amount
+            FROM market_holdings
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (user_id,))
+
+        holding = cur.fetchone()
+
+        owned = float(holding[0]) if holding else 0
+
+        if amount > owned:
+            return jsonify({
+                "ok": False,
+                "error": "not enough stock"
+            }), 400
+
+        market = market_get()
+
+        price = market["price"]
+
+        revenue = amount * price
+
+        # Remove holding
+        cur.execute("""
+            UPDATE market_holdings
+            SET amount = amount - %s
+            WHERE user_id = %s
+        """, (
+            amount,
+            user_id
+        ))
+
+        # Add coins
+        cur.execute("""
+            UPDATE users
+            SET coins = coins + %s
+            WHERE user_id = %s
+        """, (
+            int(round(revenue)),
+            user_id
+        ))
+
+        conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "amount": amount,
+            "price": price,
+            "revenue": int(round(revenue)),
+            "remaining": owned - amount
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("SELL API ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "sell error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# ADMIN - CHANGE PRICE
+# =========================================================
+
+@web.post("/admin/price")
+def admin_price_api():
+
+    conn = None
+    cur = None
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = int(data.get("user_id", 0))
+        price = float(data.get("price", 0))
+
+        if user_id != ADMIN_ID:
+            return jsonify({
+                "ok": False,
+                "error": "access denied"
+            }), 403
+
+        if price <= 0:
+            return jsonify({
+                "ok": False,
+                "error": "invalid price"
+            }), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE market
+            SET price = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (
+            price,
+            time.time(),
+            MARKET_ID
+        ))
+
+        cur.execute("""
+            INSERT INTO market_history (
+                price,
+                created_at
+            )
+            VALUES (%s, %s)
+        """, (
+            price,
+            time.time()
+        ))
+
+        conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "price": price
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("ADMIN PRICE ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "admin error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# ADMIN - RANDOM SETTINGS
+# =========================================================
+
+@web.post("/admin/settings")
+def admin_settings_api():
+
+    conn = None
+    cur = None
+
+    try:
+        data = request.get_json(silent=True) or {}
+
+        user_id = int(data.get("user_id", 0))
+
+        if user_id != ADMIN_ID:
+            return jsonify({
+                "ok": False,
+                "error": "access denied"
+            }), 403
+
+        min_change = float(
+            data.get("min_change", -5)
+        ) / 100
+
+        max_change = float(
+            data.get("max_change", 5)
+        ) / 100
+
+        auto_change = bool(
+            data.get("auto_change", True)
+        )
+
+        if min_change < -1:
+            min_change = -1
+
+        if max_change > 1:
+            max_change = 1
+
+        if min_change > max_change:
+            return jsonify({
+                "ok": False,
+                "error": "invalid range"
+            }), 400
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE market
+            SET min_change = %s,
+                max_change = %s,
+                auto_change = %s,
+                updated_at = %s
+            WHERE id = %s
+        """, (
+            min_change,
+            max_change,
+            auto_change,
+            time.time(),
+            MARKET_ID
+        ))
+
+        conn.commit()
+
+        return jsonify({
+            "ok": True,
+            "min_change": min_change,
+            "max_change": max_change,
+            "auto_change": auto_change
+        })
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("ADMIN SETTINGS ERROR")
+
+        return jsonify({
+            "ok": False,
+            "error": "admin error"
+        }), 500
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)

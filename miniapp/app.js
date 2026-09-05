@@ -3,7 +3,7 @@
 // ========================================
 
 // آدرس API رباتت را اینجا قرار بده
-const API_URL = "https://YOUR-API.onrender.com";
+const API_URL = "https://api.render.com/deploy/srv-dae3kt740ujc73dm3ljg?key=_pk18dbgRvQ";
 
 
 // ========================================

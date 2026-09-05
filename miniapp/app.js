@@ -1,447 +1,192 @@
-// =====================================
-// CONFIG
-// =====================================
+// ========================================
+// تنظیمات
+// ========================================
 
-// آدرس API خودت را اینجا قرار بده
-
+// آدرس API رباتت را اینجا قرار بده
 const API_URL = "https://YOUR-API.onrender.com";
 
 
-// =====================================
+// ========================================
 // TELEGRAM
-// =====================================
+// ========================================
 
-const tg = window.Telegram?.WebApp;
+const tg = window.Telegram.WebApp;
 
-if (tg) {
-    tg.ready();
-    tg.expand();
-}
+tg.ready();
+tg.expand();
 
 
-// =====================================
-// USER
-// =====================================
+// کاربر فعلی تلگرام
+const telegramUser = tg.initDataUnsafe?.user;
 
-let userId = null;
-
-if (tg && tg.initDataUnsafe?.user) {
-
-    userId =
-        tg.initDataUnsafe.user.id;
-
-}
+const userId = telegramUser?.id;
 
 
-// برای تست مرورگر عادی
-if (!userId) {
+// ========================================
+// ELEMENTS
+// ========================================
 
-    const params =
-        new URLSearchParams(
-            window.location.search
-        );
+const walletElement = document.getElementById("wallet");
+const stockNameElement = document.getElementById("stockName");
+const priceElement = document.getElementById("price");
+const changeElement = document.getElementById("change");
+const sharesElement = document.getElementById("shares");
+const portfolioValueElement =
+    document.getElementById("portfolioValue");
 
-    userId =
-        params.get("user_id");
-}
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
 
 
-// =====================================
+// ========================================
 // DATA
-// =====================================
+// ========================================
 
 let currentPrice = 0;
+let currentShares = 0;
 
-let previousPrice = 0;
-
-let history = [];
-
-
-// =====================================
-// ELEMENTS
-// =====================================
-
-const coinsEl =
-    document.getElementById("coins");
-
-const priceEl =
-    document.getElementById("price");
-
-const stockNameEl =
-    document.getElementById("stockName");
-
-const changeEl =
-    document.getElementById("change");
-
-const amountEl =
-    document.getElementById("amount");
-
-const totalEl =
-    document.getElementById("total");
-
-const sharesEl =
-    document.getElementById("shares");
-
-const assetValueEl =
-    document.getElementById("assetValue");
-
-const statusEl =
-    document.getElementById("status");
-
-const canvas =
-    document.getElementById("chart");
-
-const ctx =
-    canvas.getContext("2d");
+let chartPrices = [];
 
 
-// =====================================
-// API HELPER
-// =====================================
+// ========================================
+// TOAST
+// ========================================
 
-async function api(
-    endpoint,
-    options = {}
-) {
+function toast(message) {
 
-    const response =
-        await fetch(
-            API_URL + endpoint,
-            {
-                ...options,
+    const element = document.getElementById("toast");
 
-                headers: {
-                    "Content-Type":
-                        "application/json",
+    element.textContent = message;
+    element.classList.add("show");
 
-                    ...(options.headers || {})
-                }
-            }
-        );
-
-    const data =
-        await response.json();
-
-    if (!response.ok) {
-
-        throw new Error(
-            data.error ||
-            "خطای سرور"
-        );
-    }
-
-    return data;
+    setTimeout(() => {
+        element.classList.remove("show");
+    }, 2500);
 }
 
 
-// =====================================
-// LOAD MARKET
-// =====================================
+// ========================================
+// NUMBER FORMAT
+// ========================================
 
-async function loadMarket() {
+function formatNumber(number) {
 
-    try {
-
-        const data =
-            await api("/market");
-
-        const stock =
-            data.stock;
-
-        stockNameEl.textContent =
-            stock.name;
-
-        previousPrice =
-            currentPrice;
-
-        currentPrice =
-            stock.price;
-
-        priceEl.textContent =
-            currentPrice.toLocaleString();
-
-        if (
-            previousPrice &&
-            previousPrice !== currentPrice
-        ) {
-
-            const percent =
-                (
-                    (currentPrice -
-                        previousPrice)
-                    /
-                    previousPrice
-                ) * 100;
-
-            changeEl.textContent =
-                (
-                    percent >= 0
-                    ? "↗ +"
-                    : "↘ "
-                )
-                +
-                percent.toFixed(2)
-                +
-                "%";
-        }
-
-        history.push(currentPrice);
-
-        if (history.length > 40) {
-            history.shift();
-        }
-
-        drawChart();
-
-        updateTotal();
-
-        statusEl.textContent =
-            "● آنلاین";
-
-    }
-
-    catch (error) {
-
-        console.error(error);
-
-        statusEl.textContent =
-            "● خطا در اتصال";
-
-        showToast(
-            "اتصال به API برقرار نشد"
-        );
-    }
+    return Number(number || 0).toLocaleString("fa-IR");
 }
 
 
-// =====================================
-// LOAD WALLET
-// =====================================
+// ========================================
+// WALLET
+// ========================================
 
 async function loadWallet() {
 
     if (!userId) {
 
-        coinsEl.textContent =
-            "نامشخص";
+        walletElement.textContent = "نامشخص";
 
         return;
     }
 
     try {
 
-        const data =
-            await api(
-                "/wallet/" + userId
-            );
+        const response = await fetch(
+            `${API_URL}/wallet/${userId}`
+        );
 
-        coinsEl.textContent =
-            Number(
-                data.coins
-            ).toLocaleString();
+        if (!response.ok) {
+            throw new Error("Wallet request failed");
+        }
 
-    }
+        const data = await response.json();
 
-    catch (error) {
+        walletElement.textContent =
+            formatNumber(data.coins);
+
+    } catch (error) {
 
         console.error(error);
+
+        walletElement.textContent = "خطا";
     }
 }
 
 
-// =====================================
-// AMOUNT
-// =====================================
+// ========================================
+// MARKET
+// ========================================
 
-function changeAmount(value) {
-
-    let amount =
-        Number(
-            amountEl.value
-        ) || 1;
-
-    amount += value;
-
-    if (amount < 1) {
-        amount = 1;
-    }
-
-    amountEl.value =
-        amount;
-
-    updateTotal();
-}
-
-
-amountEl.addEventListener(
-    "input",
-    updateTotal
-);
-
-
-// =====================================
-// TOTAL
-// =====================================
-
-function updateTotal() {
-
-    const amount =
-        Number(
-            amountEl.value
-        ) || 0;
-
-    const total =
-        amount *
-        currentPrice;
-
-    totalEl.textContent =
-        total.toLocaleString();
-
-    assetValueEl.textContent =
-        (
-            Number(
-                sharesEl.textContent
-            ) *
-            currentPrice
-        ).toLocaleString();
-}
-
-
-// =====================================
-// BUY
-// =====================================
-
-async function buyStock() {
-
-    if (!userId) {
-
-        showToast(
-            "شناسه کاربر پیدا نشد"
-        );
-
-        return;
-    }
-
-    const amount =
-        Number(
-            amountEl.value
-        );
-
-    if (
-        !Number.isInteger(amount) ||
-        amount <= 0
-    ) {
-
-        showToast(
-            "تعداد نامعتبر است"
-        );
-
-        return;
-    }
+async function loadMarket() {
 
     try {
 
-        const data =
-            await api(
-                "/buy",
-                {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        user_id: userId,
-                        amount: amount
-                    })
-                }
-            );
-
-        showToast(
-            `✅ خرید انجام شد — ${data.total.toLocaleString()} سکه`
+        const response = await fetch(
+            `${API_URL}/market`
         );
 
-        await loadWallet();
+        if (!response.ok) {
+            throw new Error("Market request failed");
+        }
 
-        await loadPortfolio();
+        const data = await response.json();
 
-    }
+        currentPrice = Number(data.price || 0);
 
-    catch (error) {
+        stockNameElement.textContent =
+            data.name || "BETA";
 
-        showToast(
-            "❌ " + error.message
-        );
-    }
-}
+        priceElement.textContent =
+            formatNumber(currentPrice);
 
 
-// =====================================
-// SELL
-// =====================================
+        // تغییر قیمت
 
-async function sellStock() {
+        let change =
+            data.change ?? data.change_percent ?? 0;
 
-    if (!userId) {
+        change = Number(change);
 
-        showToast(
-            "شناسه کاربر پیدا نشد"
-        );
+        if (change > 0) {
 
-        return;
-    }
+            changeElement.textContent =
+                `▲ +${change}%`;
 
-    const amount =
-        Number(
-            amountEl.value
-        );
+        } else if (change < 0) {
 
-    if (
-        !Number.isInteger(amount) ||
-        amount <= 0
-    ) {
+            changeElement.textContent =
+                `▼ ${change}%`;
 
-        showToast(
-            "تعداد نامعتبر است"
-        );
+        } else {
 
-        return;
-    }
+            changeElement.textContent =
+                "بدون تغییر";
+        }
 
-    try {
 
-        const data =
-            await api(
-                "/sell",
-                {
-                    method: "POST",
+        // قیمت برای نمودار
 
-                    body: JSON.stringify({
-                        user_id: userId,
-                        amount: amount
-                    })
-                }
-            );
+        chartPrices.push(currentPrice);
 
-        showToast(
-            `✅ فروش انجام شد — ${data.total.toLocaleString()} سکه`
-        );
+        if (chartPrices.length > 30) {
+            chartPrices.shift();
+        }
 
-        await loadWallet();
+        drawChart();
 
-        await loadPortfolio();
+    } catch (error) {
 
-    }
+        console.error(error);
 
-    catch (error) {
-
-        showToast(
-            "❌ " + error.message
-        );
+        priceElement.textContent = "خطا";
+        changeElement.textContent =
+            "اتصال به بازار برقرار نشد";
     }
 }
 
 
-// =====================================
+// ========================================
 // PORTFOLIO
-// =====================================
+// ========================================
 
 async function loadPortfolio() {
 
@@ -451,197 +196,51 @@ async function loadPortfolio() {
 
     try {
 
-        const data =
-            await api(
-                "/portfolio/" + userId
+        const response = await fetch(
+            `${API_URL}/portfolio/${userId}`
+        );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+
+        currentShares =
+            Number(data.shares || 0);
+
+        sharesElement.textContent =
+            formatNumber(currentShares);
+
+        portfolioValueElement.textContent =
+            formatNumber(
+                currentShares * currentPrice
             );
 
-        sharesEl.textContent =
-            data.shares;
+    } catch (error) {
 
-        assetValueEl.textContent =
-            Number(
-                data.value
-            ).toLocaleString();
-
-    }
-
-    catch (error) {
-
-        console.error(error);
-    }
-}
-
-
-// =====================================
-// ADMIN PRICE
-// =====================================
-
-async function setPrice() {
-
-    const price =
-        Number(
-            document.getElementById(
-                "adminPrice"
-            ).value
-        );
-
-    if (
-        !Number.isInteger(price) ||
-        price < 1
-    ) {
-
-        showToast(
-            "قیمت نامعتبر است"
-        );
-
-        return;
-    }
-
-    try {
-
-        await api(
-            "/admin/price",
-            {
-                method: "POST",
-
-                body: JSON.stringify({
-                    user_id: userId,
-                    price: price
-                })
-            }
-        );
-
-        showToast(
-            "✅ قیمت تغییر کرد"
-        );
-
-        await loadMarket();
-
-    }
-
-    catch (error) {
-
-        showToast(
-            "❌ " + error.message
+        console.log(
+            "Portfolio هنوز در API ساخته نشده."
         );
     }
 }
 
 
-// =====================================
-// RANDOM SETTINGS
-// =====================================
-
-async function setRandomSettings() {
-
-    const minChange =
-        Number(
-            document.getElementById(
-                "minChange"
-            ).value
-        );
-
-    const maxChange =
-        Number(
-            document.getElementById(
-                "maxChange"
-            ).value
-        );
-
-    try {
-
-        await api(
-            "/admin/random",
-            {
-                method: "POST",
-
-                body: JSON.stringify({
-                    user_id: userId,
-                    enabled: true,
-                    min_change: minChange,
-                    max_change: maxChange
-                })
-            }
-        );
-
-        showToast(
-            "✅ تنظیمات ذخیره شد"
-        );
-
-    }
-
-    catch (error) {
-
-        showToast(
-            "❌ " + error.message
-        );
-    }
-}
-
-
-// =====================================
-// RANDOM UPDATE
-// =====================================
-
-async function randomUpdate() {
-
-    try {
-
-        const data =
-            await api(
-                "/market/random-update",
-                {
-                    method: "POST"
-                }
-            );
-
-        showToast(
-            `🎲 قیمت جدید: ${data.new_price}`
-        );
-
-        await loadMarket();
-
-    }
-
-    catch (error) {
-
-        showToast(
-            "❌ " + error.message
-        );
-    }
-}
-
-
-// =====================================
+// ========================================
 // CHART
-// =====================================
+// ========================================
 
 function drawChart() {
 
-    const rect =
-        canvas.getBoundingClientRect();
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
 
-    canvas.width =
-        rect.width * devicePixelRatio;
+    const dpr = window.devicePixelRatio || 1;
 
-    canvas.height =
-        rect.height * devicePixelRatio;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
 
-    ctx.setTransform(
-        devicePixelRatio,
-        0,
-        0,
-        devicePixelRatio,
-        0,
-        0
-    );
-
-    const width =
-        rect.width;
-
-    const height =
-        rect.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     ctx.clearRect(
         0,
@@ -650,114 +249,363 @@ function drawChart() {
         height
     );
 
-    if (history.length < 2) {
+
+    if (chartPrices.length < 2) {
         return;
     }
 
+
     const min =
-        Math.min(...history);
+        Math.min(...chartPrices);
 
     const max =
-        Math.max(...history);
+        Math.max(...chartPrices);
 
     const range =
         max - min || 1;
 
+
     ctx.beginPath();
 
-    history.forEach(
-        (value, index) => {
 
-            const x =
-                (index /
-                    (history.length - 1))
-                *
-                width;
+    chartPrices.forEach((value, index) => {
 
-            const y =
-                height -
-                (
-                    (value - min)
-                    /
-                    range
-                )
-                *
-                (
-                    height - 20
-                )
-                -
-                10;
+        const x =
+            (index / (chartPrices.length - 1))
+            * width;
 
-            if (index === 0) {
-                ctx.moveTo(x, y);
-            } else {
-                ctx.lineTo(x, y);
-            }
+        const y =
+            height -
+            ((value - min) / range)
+            * (height - 15)
+            - 5;
+
+
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
         }
-    );
 
-    ctx.strokeStyle =
-        "#ffffff";
+    });
 
-    ctx.lineWidth =
-        3;
+
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
 
     ctx.stroke();
 }
 
 
-// =====================================
-// TOAST
-// =====================================
+// ========================================
+// BUY
+// ========================================
 
-function showToast(message) {
+async function buyStock() {
 
-    const toast =
-        document.getElementById(
-            "toast"
+    if (!userId) {
+
+        toast("کاربر تلگرام پیدا نشد");
+
+        return;
+    }
+
+    const amount =
+        Number(
+            document.getElementById("amount").value
         );
 
-    toast.textContent =
-        message;
 
-    toast.classList.add(
-        "show"
-    );
+    if (!amount || amount <= 0) {
 
-    setTimeout(
-        () => {
-            toast.classList.remove(
-                "show"
+        toast("تعداد نامعتبر است");
+
+        return;
+    }
+
+
+    try {
+
+        const response = await fetch(
+            `${API_URL}/buy`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    user_id: userId,
+                    amount: amount
+                })
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if (!response.ok) {
+
+            toast(
+                data.error ||
+                "خرید انجام نشد"
             );
-        },
-        2500
-    );
+
+            return;
+        }
+
+
+        toast("خرید با موفقیت انجام شد ✅");
+
+        await loadWallet();
+        await loadPortfolio();
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast("خطا در اتصال به سرور");
+    }
 }
 
 
-// =====================================
-// START
-// =====================================
+// ========================================
+// SELL
+// ========================================
 
-async function start() {
+async function sellStock() {
 
-    await loadMarket();
+    if (!userId) {
+
+        toast("کاربر تلگرام پیدا نشد");
+
+        return;
+    }
+
+
+    const amount =
+        Number(
+            document.getElementById("amount").value
+        );
+
+
+    if (!amount || amount <= 0) {
+
+        toast("تعداد نامعتبر است");
+
+        return;
+    }
+
+
+    try {
+
+        const response = await fetch(
+            `${API_URL}/sell`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    user_id: userId,
+                    amount: amount
+                })
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if (!response.ok) {
+
+            toast(
+                data.error ||
+                "فروش انجام نشد"
+            );
+
+            return;
+        }
+
+
+        toast("فروش با موفقیت انجام شد ✅");
+
+        await loadWallet();
+        await loadPortfolio();
+
+    } catch (error) {
+
+        console.error(error);
+
+        toast("خطا در اتصال به سرور");
+    }
+}
+
+
+// ========================================
+// ADMIN PRICE
+// ========================================
+
+async function changePrice() {
+
+    const price =
+        Number(
+            document.getElementById("adminPrice").value
+        );
+
+
+    if (!price || price <= 0) {
+
+        toast("قیمت نامعتبر است");
+
+        return;
+    }
+
+
+    try {
+
+        const response = await fetch(
+            `${API_URL}/admin/price`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    user_id: userId,
+                    price: price
+                })
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if (!response.ok) {
+
+            toast(
+                data.error ||
+                "تغییر قیمت انجام نشد"
+            );
+
+            return;
+        }
+
+
+        toast("قیمت تغییر کرد ✅");
+
+        await loadMarket();
+
+    } catch (error) {
+
+        toast("خطا در اتصال به سرور");
+    }
+}
+
+
+// ========================================
+// ADMIN RANDOM SETTINGS
+// ========================================
+
+async function changeRandomSettings() {
+
+    const minChange =
+        Number(
+            document.getElementById("minChange").value
+        );
+
+    const maxChange =
+        Number(
+            document.getElementById("maxChange").value
+        );
+
+
+    try {
+
+        const response = await fetch(
+            `${API_URL}/admin/random`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json"
+                },
+
+                body: JSON.stringify({
+                    user_id: userId,
+                    min_change: minChange,
+                    max_change: maxChange,
+                    random_enabled: true
+                })
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if (!response.ok) {
+
+            toast(
+                data.error ||
+                "تنظیمات ذخیره نشد"
+            );
+
+            return;
+        }
+
+
+        toast("تنظیمات ذخیره شد ✅");
+
+    } catch (error) {
+
+        toast("خطا در اتصال به سرور");
+    }
+}
+
+
+// ========================================
+// LOAD EVERYTHING
+// ========================================
+
+async function loadAll() {
 
     await loadWallet();
 
+    await loadMarket();
+
     await loadPortfolio();
-
-    // هر 5 ثانیه قیمت را بخوان
-    setInterval(
-        loadMarket,
-        5000
-    );
-
-    setInterval(
-        loadWallet,
-        5000
-    );
 }
 
 
-start();
+loadAll();
+
+
+// ========================================
+// AUTO REFRESH
+// ========================================
+
+setInterval(() => {
+
+    loadWallet();
+    loadMarket();
+    loadPortfolio();
+
+}, 10000);
+
+
+// ========================================
+// RESIZE
+// ========================================
+
+window.addEventListener(
+    "resize",
+    drawChart
+);

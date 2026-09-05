@@ -9,233 +9,382 @@ body {
     padding: 0;
     width: 100%;
     min-height: 100%;
-    font-family: Tahoma, Arial, sans-serif;
-    background: #101014;
-    color: white;
+
+    font-family:
+        Arial,
+        Tahoma,
+        sans-serif;
+
+    background: #08090d;
+    color: #ffffff;
 }
 
 body {
-    padding-bottom: 30px;
+    direction: rtl;
+}
+
+button,
+input {
+    font-family: inherit;
+}
+
+button {
+    border: 0;
+    cursor: pointer;
 }
 
 .app {
     width: 100%;
-    max-width: 520px;
+    max-width: 700px;
     margin: auto;
-    padding: 15px;
+    padding: 18px;
 }
 
-.topbar {
+
+/* HEADER */
+
+.header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    gap: 12px;
-    margin-bottom: 15px;
+    justify-content: space-between;
+
+    margin-bottom: 18px;
 }
 
-.topbar h1 {
-    margin: 0 0 6px;
-    font-size: 22px;
+.logo {
+    font-size: 25px;
+    font-weight: 900;
+    letter-spacing: 2px;
+}
+
+.subtitle {
+    color: #777b86;
+    font-size: 12px;
+    margin-top: 3px;
 }
 
 .status {
-    color: #35d07f;
-    font-size: 12px;
-}
-
-.wallet-box {
-    min-width: 105px;
-    padding: 10px;
-    border-radius: 14px;
-    background: #19191f;
-    border: 1px solid #292931;
-    text-align: center;
-}
-
-.wallet-box span {
-    display: block;
-    color: #999;
-    font-size: 11px;
-}
-
-.wallet-box strong {
-    display: block;
-    margin-top: 3px;
-    font-size: 18px;
-}
-
-.wallet-box small {
-    color: #888;
-    font-size: 10px;
-}
-
-.card {
-    background: #18181d;
-    border: 1px solid #292930;
-    border-radius: 18px;
-    padding: 17px;
-    margin-bottom: 14px;
-    box-shadow: 0 8px 25px rgba(0, 0, 0, .18);
-}
-
-.card h2 {
-    margin: 0 0 15px;
-    font-size: 18px;
-}
-
-.market-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-}
+    gap: 7px;
 
-.label {
-    color: #888;
+    color: #8e949f;
     font-size: 12px;
 }
 
-.market-header h2 {
-    margin: 5px 0 0;
-    font-size: 25px;
+.status span {
+    width: 8px;
+    height: 8px;
+
+    border-radius: 50%;
+    background: #45e68a;
+
+    box-shadow: 0 0 10px #45e68a;
 }
 
-.price-box {
-    text-align: left;
+
+/* CARDS */
+
+.wallet-card,
+.market-card,
+.portfolio,
+.trade,
+.admin {
+    background: #111319;
+
+    border: 1px solid #20232c;
+
+    border-radius: 18px;
+
+    padding: 18px;
+
+    margin-bottom: 14px;
+
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, .2);
 }
 
-.price-box span {
-    font-size: 27px;
-    font-weight: bold;
+
+/* WALLET */
+
+.wallet-title {
+    color: #858a96;
+    font-size: 13px;
 }
 
-.price-box small {
-    color: #999;
+.wallet-value {
+    margin-top: 7px;
+
+    font-size: 31px;
+    font-weight: 900;
 }
 
-.change {
-    display: inline-block;
-    margin-top: 8px;
-    padding: 5px 9px;
-    border-radius: 8px;
-    background: #25252c;
-    color: #aaa;
+.coin-label {
+    color: #727782;
+    font-size: 12px;
+
+    margin-top: 3px;
+}
+
+
+/* MARKET */
+
+.market-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.market-name {
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.market-desc {
+    color: #747984;
+    font-size: 11px;
+
+    margin-top: 4px;
+}
+
+.market-change {
+    padding: 7px 11px;
+
+    border-radius: 9px;
+
+    background: #191c23;
+
     font-size: 12px;
 }
 
-#chart {
-    width: 100%;
-    height: 150px;
+.price {
     margin-top: 15px;
-    display: block;
+
+    font-size: 38px;
+    font-weight: 900;
+
+    direction: ltr;
+    text-align: right;
 }
+
+.chart {
+    margin-top: 15px;
+
+    width: 100%;
+    height: 160px;
+
+    overflow: hidden;
+
+    border-radius: 12px;
+
+    background: #0c0e13;
+}
+
+canvas {
+    width: 100%;
+    height: 100%;
+}
+
+
+/* TITLES */
+
+.section-title {
+    font-size: 15px;
+    font-weight: 800;
+
+    margin-bottom: 14px;
+}
+
+
+/* PORTFOLIO */
+
+.portfolio-grid {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
+    gap: 10px;
+}
+
+.info-box {
+    background: #0b0d12;
+
+    border: 1px solid #1d2028;
+
+    border-radius: 13px;
+
+    padding: 13px;
+}
+
+.info-box span {
+    display: block;
+
+    color: #777c87;
+
+    font-size: 11px;
+
+    margin-bottom: 7px;
+}
+
+.info-box strong {
+    font-size: 17px;
+}
+
+
+/* TRADE */
 
 .amount-box label,
-.admin label {
+.admin-box label {
     display: block;
-    color: #999;
+
+    color: #858a95;
+
     font-size: 12px;
+
     margin-bottom: 7px;
 }
 
 input {
     width: 100%;
-    border: 1px solid #303038;
-    background: #101014;
-    color: white;
+
+    background: #0a0c10;
+
+    color: #fff;
+
+    border: 1px solid #272b35;
+
     border-radius: 12px;
+
     padding: 13px;
-    font-size: 16px;
+
     outline: none;
+
+    font-size: 15px;
 }
 
 input:focus {
-    border-color: #666;
+    border-color: #555b68;
 }
 
-.buttons {
-    display: flex;
+.trade-buttons {
+    display: grid;
+
+    grid-template-columns:
+        1fr 1fr;
+
     gap: 10px;
+
     margin-top: 12px;
 }
 
-button {
-    width: 100%;
-    border: 0;
-    border-radius: 12px;
+.trade-buttons button,
+.admin-box button {
     padding: 13px;
-    color: white;
-    font-size: 15px;
-    font-weight: bold;
-    cursor: pointer;
-}
 
-button:active {
-    transform: scale(.97);
+    border-radius: 12px;
+
+    font-weight: 800;
+
+    font-size: 14px;
 }
 
 .buy {
-    background: #176b43;
+    background: #ffffff;
+    color: #000000;
 }
 
 .sell {
-    background: #762f38;
+    background: #242832;
+    color: #ffffff;
 }
 
-.portfolio {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-}
 
-.portfolio div {
-    background: #111116;
-    border-radius: 12px;
-    padding: 13px;
-}
-
-.portfolio span {
-    display: block;
-    color: #888;
-    font-size: 11px;
-    margin-bottom: 7px;
-}
-
-.portfolio strong {
-    font-size: 17px;
-}
+/* ADMIN */
 
 .admin {
-    border-color: #67501b;
+    border-color: #383d48;
 }
 
-.admin button {
-    margin-top: 10px;
-    background: #76591a;
+.admin-box {
+    background: #0b0d12;
+
+    border-radius: 13px;
+
+    padding: 13px;
+
+    margin-bottom: 10px;
 }
 
-.admin hr {
-    border: 0;
-    border-top: 1px solid #292930;
-    margin: 18px 0;
+.admin-box input {
+    margin-bottom: 10px;
 }
 
-#toast {
-    position: fixed;
-    left: 50%;
-    bottom: 25px;
-    transform: translateX(-50%) translateY(20px);
-    background: #25252b;
-    color: white;
-    padding: 11px 16px;
-    border-radius: 12px;
-    opacity: 0;
-    pointer-events: none;
-    transition: .25s;
-    font-size: 13px;
-    z-index: 100;
+.admin-box button {
+    width: 100%;
+
+    background: #ffffff;
+    color: #000;
 }
 
-#toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
+.switch-row {
+    display: flex !important;
+
+    justify-content: space-between;
+    align-items: center;
+
+    margin-top: 8px;
+}
+
+.switch-row input {
+    width: auto;
+
+    margin: 0;
+}
+
+
+/* MESSAGE */
+
+.message {
+    min-height: 25px;
+
+    text-align: center;
+
+    color: #8f96a3;
+
+    font-size: 12px;
+
+    padding: 5px;
+}
+
+
+/* FOOTER */
+
+footer {
+    text-align: center;
+
+    color: #454954;
+
+    font-size: 10px;
+
+    padding: 15px;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 400px) {
+
+    .app {
+        padding: 12px;
+    }
+
+    .wallet-value {
+        font-size: 27px;
+    }
+
+    .price {
+        font-size: 32px;
+    }
+
 }

@@ -9,213 +9,173 @@
 
     <title>Beta Market</title>
 
-    <link rel="stylesheet" href="style.css">
-
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
 <div class="app">
 
-    <!-- HEADER -->
-    <header>
+    <header class="topbar">
         <div>
             <h1>📈 Beta Market</h1>
-            <span id="status">در حال اتصال...</span>
+            <span class="status">● آنلاین</span>
         </div>
 
-        <div class="wallet">
-            <span>💰</span>
-            <b id="coins">0</b>
+        <div class="wallet-box">
+            <span>موجودی</span>
+            <strong id="wallet">...</strong>
+            <small>🪙 کوین</small>
         </div>
     </header>
 
 
-    <!-- MARKET CARD -->
-    <section class="market-card">
+    <main>
 
-        <div class="market-top">
+        <!-- MARKET -->
 
-            <div>
-                <small>بازار</small>
-                <h2 id="stockName">BETA</h2>
+        <section class="card market-card">
+
+            <div class="market-header">
+                <div>
+                    <span class="label">بازار</span>
+                    <h2 id="stockName">BETA</h2>
+                </div>
+
+                <div class="price-box">
+                    <span id="price">...</span>
+                    <small>🪙</small>
+                </div>
             </div>
 
-            <div class="price-box">
-                <small>قیمت</small>
-                <strong id="price">0</strong>
-                <span>سکه</span>
+            <div class="change" id="change">
+                در حال دریافت...
             </div>
 
-        </div>
-
-
-        <!-- CHART -->
-        <div class="chart-wrapper">
             <canvas id="chart"></canvas>
-        </div>
+
+        </section>
 
 
-        <div class="change" id="change">
-            0%
-        </div>
+        <!-- TRADE -->
 
-    </section>
+        <section class="card">
+
+            <h2>معامله</h2>
+
+            <div class="amount-box">
+                <label>تعداد</label>
+
+                <input
+                    id="amount"
+                    type="number"
+                    min="1"
+                    value="1"
+                    inputmode="numeric"
+                >
+            </div>
+
+            <div class="buttons">
+
+                <button
+                    id="buyBtn"
+                    class="buy"
+                    onclick="buyStock()"
+                >
+                    🟢 خرید
+                </button>
+
+                <button
+                    id="sellBtn"
+                    class="sell"
+                    onclick="sellStock()"
+                >
+                    🔴 فروش
+                </button>
+
+            </div>
+
+        </section>
 
 
-    <!-- BUY / SELL -->
-    <section class="trade-card">
+        <!-- PORTFOLIO -->
 
-        <label>
-            تعداد
-        </label>
+        <section class="card">
 
-        <div class="amount-row">
+            <h2>دارایی من</h2>
 
-            <button onclick="changeAmount(-1)">−</button>
+            <div class="portfolio">
+
+                <div>
+                    <span>تعداد BETA</span>
+                    <strong id="shares">0</strong>
+                </div>
+
+                <div>
+                    <span>ارزش دارایی</span>
+                    <strong id="portfolioValue">0</strong>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ADMIN -->
+
+        <section
+            id="adminPanel"
+            class="card admin"
+            style="display:none;"
+        >
+
+            <h2>⚙️ پنل مدیریت</h2>
+
+            <label>قیمت جدید</label>
 
             <input
-                id="amount"
+                id="adminPrice"
                 type="number"
-                value="1"
                 min="1"
             >
 
-            <button onclick="changeAmount(1)">+</button>
-
-        </div>
-
-
-        <div class="total">
-            مجموع:
-            <b id="total">0</b>
-            سکه
-        </div>
-
-
-        <div class="buttons">
-
-            <button
-                class="buy"
-                onclick="buyStock()"
-            >
-                خرید
+            <button onclick="changePrice()">
+                تغییر قیمت
             </button>
 
-            <button
-                class="sell"
-                onclick="sellStock()"
+
+            <hr>
+
+            <label>حداقل تغییر درصد</label>
+
+            <input
+                id="minChange"
+                type="number"
+                value="-10"
             >
-                فروش
+
+            <label>حداکثر تغییر درصد</label>
+
+            <input
+                id="maxChange"
+                type="number"
+                value="10"
+            >
+
+            <button onclick="changeRandomSettings()">
+                ذخیره تنظیمات
             </button>
 
-        </div>
+        </section>
 
-    </section>
-
-
-    <!-- PORTFOLIO -->
-    <section class="portfolio">
-
-        <h3>📦 دارایی من</h3>
-
-        <div class="portfolio-row">
-
-            <span>تعداد سهم</span>
-
-            <b id="shares">
-                0
-            </b>
-
-        </div>
-
-        <div class="portfolio-row">
-
-            <span>ارزش دارایی</span>
-
-            <b id="assetValue">
-                0
-            </b>
-
-        </div>
-
-    </section>
-
-
-    <!-- ADMIN -->
-    <section
-        id="adminPanel"
-        class="admin"
-        style="display:none;"
-    >
-
-        <h3>👑 کنترل بازار</h3>
-
-
-        <label>
-            قیمت جدید
-        </label>
-
-        <input
-            id="adminPrice"
-            type="number"
-            min="1"
-            placeholder="مثلاً 1500"
-        >
-
-        <button onclick="setPrice()">
-            تغییر قیمت
-        </button>
-
-
-        <hr>
-
-
-        <label>
-            حداقل تغییر درصدی
-        </label>
-
-        <input
-            id="minChange"
-            type="number"
-            value="-10"
-        >
-
-
-        <label>
-            حداکثر تغییر درصدی
-        </label>
-
-        <input
-            id="maxChange"
-            type="number"
-            value="10"
-        >
-
-
-        <button onclick="setRandomSettings()">
-            ذخیره تنظیمات رندوم
-        </button>
-
-
-        <button
-            class="random-btn"
-            onclick="randomUpdate()"
-        >
-            🎲 تغییر تصادفی قیمت
-        </button>
-
-    </section>
+    </main>
 
 </div>
 
 
-<div
-    id="toast"
-    class="toast"
-></div>
-
+<div id="toast"></div>
 
 <script src="app.js"></script>
 

@@ -1,55 +1,90 @@
 import os
 import psycopg2
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
 
-if not DATABASE_URL:
-    raise RuntimeError("❌ DATABASE_URL تنظیم نشده!")
+DATABASE_URL = os.environ["DATABASE_URL"]
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
 
-# جدول بازار
-cur.execute("""
-CREATE TABLE IF NOT EXISTS stocks (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) NOT NULL,
-    price BIGINT NOT NULL DEFAULT 100,
+def main():
+    conn = psycopg2.connect(
+        DATABASE_URL,
+        sslmode="require"
+    )
 
-    min_change INTEGER NOT NULL DEFAULT -10,
-    max_change INTEGER NOT NULL DEFAULT 10,
+    cur = conn.cursor()
 
-    random_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    # ==========================================
+    # MARKET
+    # ==========================================
 
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-""")
-
-# فقط یک بازار اولیه بساز
-cur.execute("""
-SELECT id FROM stocks LIMIT 1;
-""")
-
-stock = cur.fetchone()
-
-if not stock:
     cur.execute("""
-        INSERT INTO stocks
-        (name, price, min_change, max_change, random_enabled)
-        VALUES (%s, %s, %s, %s, %s)
-    """, (
-        "BETA",
-        100,
-        -10,
-        10,
-        True
-    ))
+        CREATE TABLE IF NOT EXISTS market (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT 'BetaCoin',
+            price NUMERIC(18, 2) NOT NULL DEFAULT 100,
+            min_change NUMERIC(10, 4) NOT NULL DEFAULT -0.05,
+            max_change NUMERIC(10, 4) NOT NULL DEFAULT 0.05,
+            auto_change BOOLEAN NOT NULL DEFAULT TRUE,
+            updated_at DOUBLE PRECISION NOT NULL DEFAULT 0
+        )
+    """)
 
-conn.commit()
+    # ==========================================
+    # USER HOLDINGS
+    # ==========================================
 
-cur.close()
-conn.close()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS market_holdings (
+            user_id BIGINT PRIMARY KEY,
+            amount NUMERIC(18, 6) NOT NULL DEFAULT 0
+        )
+    """)
 
-print("================================")
-print("✅ بازار ساخته شد")
-print("================================")
+    # ==========================================
+    # MARKET HISTORY
+    # ==========================================
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS market_history (
+            id SERIAL PRIMARY KEY,
+            price NUMERIC(18, 2) NOT NULL,
+            created_at DOUBLE PRECISION NOT NULL
+        )
+    """)
+
+    # ==========================================
+    # DEFAULT MARKET
+    # ==========================================
+
+    cur.execute("""
+        INSERT INTO market (
+            id,
+            name,
+            price,
+            min_change,
+            max_change,
+            auto_change,
+            updated_at
+        )
+        VALUES (
+            1,
+            'BetaCoin',
+            100,
+            -0.05,
+            0.05,
+            TRUE,
+            0
+        )
+        ON CONFLICT (id) DO NOTHING
+    """)
+
+    conn.commit()
+
+    cur.close()
+    conn.close()
+
+    print("Market database is ready.")
+
+
+if __name__ == "__main__":
+    main()

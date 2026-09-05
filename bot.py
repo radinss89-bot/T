@@ -2502,20 +2502,32 @@ def admin_settings_api():
             "error": "admin error"
         }), 500
 
-    finally:
-        if cur:
-            cur.close()
+# =========================
+# AUTO REPLY
+# =========================
 
-        release_db(conn)
-async def hasham_reply(update, context):
-    if update.message and update.message.text:
-        if update.message.text.strip() == "ک":
-            await update.message.reply_text("کیرم دهنت")
+async def hasam_auto_reply(update, context):
+    if not update.message:
+        return
 
+    text = update.message.text
+
+    if not text:
+        return
+
+    if text.strip() == "حسام":
+        await update.message.reply_text(
+            "متن پاسخ را اینجا بنویس"
+        )
+
+
+# =========================
+# HANDLER
+# =========================
 
 application.add_handler(
     MessageHandler(
         filters.TEXT & ~filters.COMMAND,
-        hasham_reply
+        hasam_auto_reply
     )
 )

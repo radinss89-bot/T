@@ -1,0 +1,405 @@
+* {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    margin: 0;
+
+    background:
+        radial-gradient(
+            circle at top,
+            #202020,
+            #090909 70%
+        );
+
+    color: white;
+
+    font-family:
+        Arial,
+        Tahoma,
+        sans-serif;
+
+    min-height: 100vh;
+}
+
+
+.app {
+    width: 100%;
+    max-width: 520px;
+
+    margin: auto;
+
+    padding: 15px;
+}
+
+
+/* HEADER */
+
+header {
+    display: flex;
+
+    align-items: center;
+    justify-content: space-between;
+
+    margin-bottom: 15px;
+}
+
+
+h1 {
+    margin: 0;
+
+    font-size: 22px;
+}
+
+
+header span {
+    color: #999;
+
+    font-size: 12px;
+}
+
+
+.wallet {
+    background: #181818;
+
+    border: 1px solid #303030;
+
+    padding: 10px 13px;
+
+    border-radius: 14px;
+
+    display: flex;
+
+    gap: 7px;
+
+    align-items: center;
+}
+
+
+/* MARKET */
+
+.market-card,
+.trade-card,
+.portfolio,
+.admin {
+
+    background: rgba(25,25,25,.95);
+
+    border: 1px solid #333;
+
+    border-radius: 20px;
+
+    padding: 17px;
+
+    margin-bottom: 14px;
+
+    box-shadow:
+        0 10px 30px
+        rgba(0,0,0,.3);
+}
+
+
+.market-top {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+}
+
+
+small {
+    color: #888;
+}
+
+
+h2 {
+    margin: 5px 0;
+
+    font-size: 27px;
+}
+
+
+.price-box {
+    text-align: left;
+}
+
+
+.price-box strong {
+
+    display: block;
+
+    font-size: 27px;
+
+    margin-top: 4px;
+}
+
+
+.price-box span {
+    color: #888;
+
+    font-size: 12px;
+}
+
+
+/* CHART */
+
+.chart-wrapper {
+
+    height: 180px;
+
+    margin-top: 15px;
+
+    background: #101010;
+
+    border-radius: 14px;
+
+    overflow: hidden;
+}
+
+
+canvas {
+
+    width: 100%;
+
+    height: 100%;
+}
+
+
+.change {
+
+    margin-top: 10px;
+
+    text-align: center;
+
+    font-weight: bold;
+}
+
+
+/* TRADE */
+
+label {
+
+    display: block;
+
+    margin-bottom: 7px;
+
+    color: #aaa;
+
+    font-size: 13px;
+}
+
+
+.amount-row {
+
+    display: flex;
+
+    gap: 8px;
+}
+
+
+.amount-row button {
+
+    width: 50px;
+
+    border: 0;
+
+    border-radius: 12px;
+
+    background: #292929;
+
+    color: white;
+
+    font-size: 25px;
+}
+
+
+input {
+
+    width: 100%;
+
+    border: 1px solid #363636;
+
+    background: #101010;
+
+    color: white;
+
+    padding: 13px;
+
+    border-radius: 12px;
+
+    outline: none;
+
+    font-size: 16px;
+}
+
+
+.total {
+
+    margin: 15px 0;
+
+    text-align: center;
+
+    color: #aaa;
+}
+
+
+.total b {
+    color: white;
+}
+
+
+.buttons {
+
+    display: grid;
+
+    grid-template-columns: 1fr 1fr;
+
+    gap: 10px;
+}
+
+
+button {
+
+    border: 0;
+
+    cursor: pointer;
+
+    color: white;
+
+    padding: 13px;
+
+    border-radius: 13px;
+
+    font-size: 15px;
+
+    font-weight: bold;
+
+    background: #303030;
+}
+
+
+.buy {
+    background: #168548;
+}
+
+
+.sell {
+    background: #a83c3c;
+}
+
+
+button:active {
+    transform: scale(.97);
+}
+
+
+/* PORTFOLIO */
+
+.portfolio h3,
+.admin h3 {
+
+    margin-top: 0;
+
+}
+
+
+.portfolio-row {
+
+    display: flex;
+
+    justify-content: space-between;
+
+    padding: 11px 0;
+
+    border-bottom: 1px solid #292929;
+}
+
+
+.portfolio-row:last-child {
+    border-bottom: 0;
+}
+
+
+/* ADMIN */
+
+.admin {
+
+    border-color: #755d20;
+}
+
+
+.admin input {
+
+    margin-bottom: 10px;
+}
+
+
+.admin button {
+
+    width: 100%;
+
+    margin-top: 7px;
+
+    background: #70551c;
+}
+
+
+.admin hr {
+
+    border: 0;
+
+    border-top: 1px solid #333;
+
+    margin: 18px 0;
+}
+
+
+.admin .random-btn {
+
+    background: #444;
+}
+
+
+/* TOAST */
+
+.toast {
+
+    position: fixed;
+
+    left: 50%;
+
+    bottom: 25px;
+
+    transform:
+        translateX(-50%)
+        translateY(20px);
+
+    background: #222;
+
+    border: 1px solid #444;
+
+    padding: 12px 18px;
+
+    border-radius: 12px;
+
+    opacity: 0;
+
+    pointer-events: none;
+
+    transition: .25s;
+
+    z-index: 999;
+}
+
+
+.toast.show {
+
+    opacity: 1;
+
+    transform:
+        translateX(-50%)
+        translateY(0);
+}

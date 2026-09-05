@@ -2515,9 +2515,9 @@ async def hasam_auto_reply(update, context):
     if not text:
         return
 
-    if text.strip() == "حسام":
+    if text.strip() == "ک":
         await update.message.reply_text(
-            "متن پاسخ را اینجا بنویس"
+            "کیرم دهنت"
         )
 
 

@@ -36,7 +36,7 @@ COOLDOWN = 2 * 60
 
 # Quiz
 QUIZ_REWARD = 10
-QUIZ_COOLDOWN = 30 * 60  # 30 minutes
+QUIZ_COOLDOWN = 5 * 60  # 30 minutes
 
 # AngryCoin
 DEFAULT_ANGRYCOIN_PRICE = 100

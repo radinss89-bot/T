@@ -423,7 +423,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🪙 سیستم کوین:
 • فولک = +10 🪙
-• هاپهاپ کوین = +10 🪙
+• هاپهاپ = +10 🪙
 • /balance = موجودی
 • /top = جدول کوین‌ها
 

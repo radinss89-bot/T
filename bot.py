@@ -1,30 +1,20 @@
 import os
 import time
-import json
-import logging
 import random
-import uuid
+import logging
 from threading import Thread
 
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 
-from telegram import (
-    Update,
-    KeyboardButton,
-    ReplyKeyboardMarkup,
-    WebAppInfo,
-    Poll,
-)
-
+from telegram import Update, Poll
 from telegram.ext import (
     Application,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     PollAnswerHandler,
-    ConversationHandler,
     filters,
 )
 
@@ -38,41 +28,18 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 
 ADMIN_ID = 6235380364
 
-# -------------------------
-# COINS
-# -------------------------
+PORT = int(os.environ.get("PORT", 10000))
 
+# Coin mining
 COINS_PER_MESSAGE = 10
 COOLDOWN = 2 * 60
 
-# -------------------------
-# GAME
-# -------------------------
-
-GAME_URL = "https://t-pk89.onrender.com/"
-COINS_PER_GAME_SCORE = 5
-
-# -------------------------
-# QUIZ
-# -------------------------
-
+# Quiz
 QUIZ_REWARD = 10
+QUIZ_COOLDOWN = 30 * 60  # 30 minutes
 
-# -------------------------
-# MARKET
-# -------------------------
-
-ANGRYCOIN_NAME = "AngryCoin"
+# AngryCoin
 DEFAULT_ANGRYCOIN_PRICE = 100
-
-# گروهی که بورس در آن فعال است
-MARKET_GROUP_ID = None
-
-# -------------------------
-# FLASK
-# -------------------------
-
-PORT = int(os.environ.get("PORT", 10000))
 
 
 # =========================================================
@@ -108,7 +75,7 @@ def create_db_pool():
         sslmode="require",
     )
 
-    logger.info("PostgreSQL connection pool created.")
+    logger.info("PostgreSQL pool created.")
 
 
 def get_db():
@@ -125,10 +92,9 @@ def release_db(conn):
         return
 
     try:
-        if db_pool:
-            db_pool.putconn(conn)
+        db_pool.putconn(conn)
     except Exception:
-        logger.exception("Could not release database connection.")
+        logger.exception("Could not release DB connection.")
 
 
 # =========================================================
@@ -136,55 +102,29 @@ def release_db(conn):
 # =========================================================
 
 def init_db():
-
     conn = None
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
-        # =================================================
+        # -----------------------------------------
         # USERS
-        # =================================================
+        # -----------------------------------------
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
                 name TEXT NOT NULL,
-                coins INTEGER NOT NULL DEFAULT 0,
+                coins BIGINT NOT NULL DEFAULT 0,
                 last_message DOUBLE PRECISION NOT NULL DEFAULT 0
             )
         """)
 
-        # =================================================
-        # GAME
-        # =================================================
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS game_scores (
-                user_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                score INTEGER NOT NULL DEFAULT 0,
-                games_played INTEGER NOT NULL DEFAULT 0,
-                best_score INTEGER NOT NULL DEFAULT 0
-            )
-        """)
-
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS game_results (
-                game_id TEXT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                score INTEGER NOT NULL,
-                coins_awarded INTEGER NOT NULL,
-                created_at DOUBLE PRECISION NOT NULL
-            )
-        """)
-
-        # =================================================
-        # GROUPS
-        # =================================================
+        # -----------------------------------------
+        # BOT GROUPS
+        # -----------------------------------------
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS bot_groups (
@@ -193,9 +133,9 @@ def init_db():
             )
         """)
 
-        # =================================================
+        # -----------------------------------------
         # QUIZ QUESTIONS
-        # =================================================
+        # -----------------------------------------
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS quiz_questions (
@@ -205,141 +145,153 @@ def init_db():
                 option2 TEXT NOT NULL,
                 option3 TEXT NOT NULL,
                 option4 TEXT NOT NULL,
-                correct_option INTEGER NOT NULL,
-                active BOOLEAN NOT NULL DEFAULT TRUE,
+                correct_option INTEGER NOT NULL
+                    CHECK (correct_option BETWEEN 0 AND 3),
+                enabled BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at DOUBLE PRECISION NOT NULL
             )
         """)
 
-        # =================================================
+        # -----------------------------------------
         # QUIZ POLLS
-        # =================================================
+        # -----------------------------------------
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS quiz_polls (
                 poll_id TEXT PRIMARY KEY,
-                question_id INTEGER NOT NULL,
-                chat_id BIGINT,
+                question_id INTEGER NOT NULL
+                    REFERENCES quiz_questions(id)
+                    ON DELETE CASCADE,
+                chat_id BIGINT NOT NULL,
                 message_id BIGINT,
                 created_at DOUBLE PRECISION NOT NULL
             )
         """)
 
-        # =================================================
+        # -----------------------------------------
         # QUIZ ANSWERS
-        # =================================================
+        # -----------------------------------------
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS quiz_answers (
-                poll_id TEXT NOT NULL,
+                poll_id TEXT NOT NULL
+                    REFERENCES quiz_polls(poll_id)
+                    ON DELETE CASCADE,
+
                 user_id BIGINT NOT NULL,
-                selected_option INTEGER NOT NULL,
-                correct BOOLEAN NOT NULL,
-                reward INTEGER NOT NULL DEFAULT 0,
-                created_at DOUBLE PRECISION NOT NULL,
+
+                selected_option INTEGER,
+                is_correct BOOLEAN NOT NULL,
+                coins_awarded INTEGER NOT NULL DEFAULT 0,
+                answered_at DOUBLE PRECISION NOT NULL,
+
                 PRIMARY KEY (poll_id, user_id)
             )
         """)
 
-        # =================================================
-        # QUIZ SCORES
-        # =================================================
+        # -----------------------------------------
+        # QUIZ COOLDOWN
+        # -----------------------------------------
 
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS quiz_scores (
-                user_id BIGINT PRIMARY KEY,
-                name TEXT NOT NULL,
-                correct_answers INTEGER NOT NULL DEFAULT 0,
-                total_answers INTEGER NOT NULL DEFAULT 0,
-                score INTEGER NOT NULL DEFAULT 0
+            CREATE TABLE IF NOT EXISTS quiz_cooldowns (
+                chat_id BIGINT PRIMARY KEY,
+                last_question_at DOUBLE PRECISION NOT NULL DEFAULT 0
             )
         """)
 
-        # =================================================
-        # ANGRYCOIN MARKET
-        # =================================================
+        # -----------------------------------------
+        # QUIZ STATS
+        # -----------------------------------------
 
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS angrycoin_market (
+            CREATE TABLE IF NOT EXISTS quiz_user_stats (
+                user_id BIGINT PRIMARY KEY,
+                answered INTEGER NOT NULL DEFAULT 0,
+                correct INTEGER NOT NULL DEFAULT 0,
+                coins_earned BIGINT NOT NULL DEFAULT 0
+            )
+        """)
+
+        # -----------------------------------------
+        # ANGRYCOIN MARKET
+        # -----------------------------------------
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS market (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                price DOUBLE PRECISION NOT NULL,
-                group_id BIGINT,
+                symbol TEXT NOT NULL,
+                price NUMERIC(20,4) NOT NULL,
                 updated_at DOUBLE PRECISION NOT NULL
             )
         """)
 
-        # =================================================
-        # ANGRYCOIN HOLDINGS
-        # =================================================
+        # -----------------------------------------
+        # HOLDINGS
+        # -----------------------------------------
 
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS angrycoin_holdings (
+            CREATE TABLE IF NOT EXISTS market_holdings (
                 user_id BIGINT PRIMARY KEY,
-                amount DOUBLE PRECISION NOT NULL DEFAULT 0
+                amount NUMERIC(20,4) NOT NULL DEFAULT 0
             )
         """)
 
-        # =================================================
-        # ANGRYCOIN HISTORY
-        # =================================================
+        # -----------------------------------------
+        # MARKET HISTORY
+        # -----------------------------------------
 
         cur.execute("""
-            CREATE TABLE IF NOT EXISTS angrycoin_history (
-                id SERIAL PRIMARY KEY,
-                price DOUBLE PRECISION NOT NULL,
+            CREATE TABLE IF NOT EXISTS market_history (
+                id BIGSERIAL PRIMARY KEY,
+                price NUMERIC(20,4) NOT NULL,
                 created_at DOUBLE PRECISION NOT NULL
             )
         """)
 
-        # =================================================
-        # DEFAULT MARKET
-        # =================================================
+        # -----------------------------------------
+        # MARKET GROUPS
+        # -----------------------------------------
 
         cur.execute("""
-            SELECT id
-            FROM angrycoin_market
-            WHERE id = 1
+            CREATE TABLE IF NOT EXISTS market_groups (
+                chat_id BIGINT PRIMARY KEY,
+                title TEXT NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT TRUE
+            )
         """)
 
-        if cur.fetchone() is None:
+        # -----------------------------------------
+        # DEFAULT MARKET
+        # -----------------------------------------
 
-            cur.execute("""
-                INSERT INTO angrycoin_market
-                (
-                    id,
-                    name,
-                    price,
-                    group_id,
-                    updated_at
-                )
-                VALUES
-                (1, %s, %s, NULL, %s)
-            """, (
-                ANGRYCOIN_NAME,
-                DEFAULT_ANGRYCOIN_PRICE,
-                time.time()
-            ))
-
-            cur.execute("""
-                INSERT INTO angrycoin_history
-                (
-                    price,
-                    created_at
-                )
-                VALUES
-                (%s, %s)
-            """, (
-                DEFAULT_ANGRYCOIN_PRICE,
-                time.time()
-            ))
+        cur.execute("""
+            INSERT INTO market (
+                id,
+                name,
+                symbol,
+                price,
+                updated_at
+            )
+            VALUES (
+                1,
+                'AngryCoin',
+                'ANGRY',
+                %s,
+                %s
+            )
+            ON CONFLICT (id) DO NOTHING
+        """, (
+            DEFAULT_ANGRYCOIN_PRICE,
+            time.time()
+        ))
 
         conn.commit()
 
-        logger.info("Database initialized successfully.")
+        logger.info("Database initialized.")
 
     except Exception:
-
         if conn:
             conn.rollback()
 
@@ -348,7 +300,6 @@ def init_db():
         raise
 
     finally:
-
         if cur:
             cur.close()
 
@@ -360,80 +311,67 @@ def init_db():
 # =========================================================
 
 def get_user(user_id, name):
-
     conn = None
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT coins, last_message
-            FROM users
-            WHERE user_id = %s
-        """, (user_id,))
+            INSERT INTO users (
+                user_id,
+                name,
+                coins,
+                last_message
+            )
+            VALUES (%s, %s, 0, 0)
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET name = EXCLUDED.name
+
+            RETURNING coins, last_message
+        """, (
+            user_id,
+            name
+        ))
 
         row = cur.fetchone()
 
-        if row is None:
-
-            cur.execute("""
-                INSERT INTO users
-                (
-                    user_id,
-                    name,
-                    coins,
-                    last_message
-                )
-                VALUES
-                (%s, %s, 0, 0)
-                ON CONFLICT (user_id) DO NOTHING
-            """, (
-                user_id,
-                name
-            ))
-
-            conn.commit()
-
-            return 0, 0
+        conn.commit()
 
         return row[0], row[1]
 
-    finally:
+    except Exception:
+        if conn:
+            conn.rollback()
 
+        logger.exception("get_user failed.")
+        raise
+
+    finally:
         if cur:
             cur.close()
 
         release_db(conn)
 
 
-def update_user(
-    user_id,
-    name,
-    coins,
-    last
-):
-
+def update_user(user_id, name, coins, last_message):
     conn = None
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
         cur.execute("""
-            INSERT INTO users
-            (
+            INSERT INTO users (
                 user_id,
                 name,
                 coins,
                 last_message
             )
-            VALUES
-            (%s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s)
 
             ON CONFLICT (user_id)
             DO UPDATE SET
@@ -444,139 +382,100 @@ def update_user(
             user_id,
             name,
             coins,
-            last
+            last_message
         ))
 
         conn.commit()
 
     except Exception:
-
         if conn:
             conn.rollback()
 
+        logger.exception("update_user failed.")
         raise
 
     finally:
-
         if cur:
             cur.close()
 
         release_db(conn)
 
 
-def add_coins(user_id, name, amount):
+# =========================================================
+# ADMIN CHECK
+# =========================================================
 
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES
-            (%s, %s, %s, 0)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                coins = users.coins + EXCLUDED.coins
-        """, (
-            user_id,
-            name,
-            amount
-        ))
-
-        conn.commit()
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        raise
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
+def is_admin(user_id):
+    return user_id == ADMIN_ID
 
 
 # =========================================================
 # START
 # =========================================================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not update.message:
         return
 
-    keyboard = [[
-        KeyboardButton(
-            "🎮 بازی Subway Bird",
-            web_app=WebAppInfo(
-                url=GAME_URL
-            )
-        )
-    ]]
+    text = """
+🤖 ربات کوین فعاله!
 
-    await update.message.reply_text(
-        "🤖 ربات فعاله!\n\n"
+🪙 سیستم کوین:
+• فولک = +10 🪙
+• هاپهاپ کوین = +10 🪙
+• /balance = موجودی
+• /top = جدول کوین‌ها
 
-        "🪙 فولک = ۱۰ کوین\n"
-        "🐰 هاپهاپ = ۱۰ کوین\n\n"
+🧠 اطلاعات عمومی:
+• /quiz = سؤال جدید
+• /quizscore = آمار Quiz
+• /quiztop = رتبه‌بندی Quiz
 
-        "💰 /balance\n"
-        "🏆 /top\n\n"
+📈 AngryCoin:
+• /market = وضعیت بازار
+• /buy تعداد = خرید
+• /sell تعداد = فروش
+• /portfolio = دارایی من
 
-        "🎮 /gametop\n"
-        "📊 /gamestats\n\n"
+⏱️ هر گروه هر ۳۰ دقیقه فقط یک سؤال جدید می‌گیرد.
 
-        "🧠 /quiz\n"
-        "🧠 /quizscore\n"
-        "🏆 /quiztop\n\n"
+👑 دستورات ادمین:
 
-        "📈 /market\n"
-        "💰 /portfolio\n"
-        "📈 /buy مقدار\n"
-        "📉 /sell مقدار\n\n"
+/addcoins 1000
+/removecoins 1000
+/playerstats
+/say متن
+/groupmsg متن
+/setgroup
 
-        "👑 دستورات ادمین:\n"
-        "/addcoins مقدار\n"
-        "/removecoins مقدار\n"
-        "/playerstats\n"
-        "/say متن\n"
-        "/setgroup\n"
-        "/groupmsg متن\n"
-        "/addquestion\n"
-        "/setprice قیمت\n"
-        "/setmarketgroup",
+📈 مدیریت AngryCoin:
+/setmarketgroup
+/unsetmarketgroup
+/setprice 150
 
-        reply_markup=ReplyKeyboardMarkup(
-            keyboard,
-            resize_keyboard=True
-        )
-    )
+🧠 مدیریت سؤال:
+/addquestion
+/questions
+/delquestion ID
+/enablequestion ID
+/disablequestion ID
+"""
+
+    await update.message.reply_text(text)
 
 
 # =========================================================
-# FOLK + HAP HAP
+# COIN MINING
 # =========================================================
 
-async def message_handler(
+COIN_WORDS = {
+    "فولک",
+    "هاپهاپ کوین",
+}
+
+
+async def coin_message_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
@@ -594,10 +493,7 @@ async def message_handler(
 
     text = message.text.strip()
 
-    if text not in (
-        "فولک",
-        "هاپهاپ"
-    ):
+    if text not in COIN_WORDS:
         return
 
     user = message.from_user
@@ -608,14 +504,12 @@ async def message_handler(
     now = time.time()
 
     try:
-
-        coins, last = get_user(
+        coins, last_message = get_user(
             user_id,
             name
         )
 
-        # کول‌داون مشترک
-        if now - last < COOLDOWN:
+        if now - last_message < COOLDOWN:
             return
 
         coins += COINS_PER_MESSAGE
@@ -627,24 +521,12 @@ async def message_handler(
             now
         )
 
-        if text == "فولک":
-            emoji = "🗣️"
-        else:
-            emoji = "🐰"
-
         await message.reply_text(
-            f"{emoji} {name} +{COINS_PER_MESSAGE} 🪙 گرفت!"
+            f"🪙 {name} +{COINS_PER_MESSAGE} کوین گرفت!"
         )
 
     except Exception:
-
-        logger.exception(
-            "MESSAGE COIN ERROR"
-        )
-
-        await message.reply_text(
-            "❌ موقتاً خطایی رخ داد."
-        )
+        logger.exception("COIN ERROR")
 
 
 # =========================================================
@@ -667,7 +549,6 @@ async def balance(
     name = user.first_name or "کاربر"
 
     try:
-
         coins, _ = get_user(
             user.id,
             name
@@ -679,10 +560,7 @@ async def balance(
         )
 
     except Exception:
-
-        logger.exception(
-            "BALANCE ERROR"
-        )
+        logger.exception("BALANCE ERROR")
 
         await update.message.reply_text(
             "❌ خطا در گرفتن موجودی."
@@ -690,7 +568,7 @@ async def balance(
 
 
 # =========================================================
-# TOP
+# COIN TOP
 # =========================================================
 
 async def top(
@@ -705,7 +583,6 @@ async def top(
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
@@ -716,36 +593,27 @@ async def top(
             LIMIT 10
         """)
 
-        ranking = cur.fetchall()
+        rows = cur.fetchall()
 
-        if not ranking:
-
+        if not rows:
             await update.message.reply_text(
                 "🏆 هنوز کسی کوین نداره!"
             )
-
             return
 
         text = "🏆 جدول ۱۰ نفر برتر\n\n"
 
-        medals = [
-            "🥇",
-            "🥈",
-            "🥉"
-        ]
+        medals = ["🥇", "🥈", "🥉"]
 
-        for i, row in enumerate(
-            ranking,
-            1
-        ):
+        for index, row in enumerate(rows, 1):
 
             name = row[0]
             coins = row[1]
 
             prefix = (
-                medals[i - 1]
-                if i <= 3
-                else f"{i}."
+                medals[index - 1]
+                if index <= 3
+                else f"{index}."
             )
 
             text += (
@@ -754,203 +622,16 @@ async def top(
                 f"{coins} 🪙\n"
             )
 
-        await update.message.reply_text(
-            text
-        )
+        await update.message.reply_text(text)
 
     except Exception:
-
-        logger.exception(
-            "TOP ERROR"
-        )
+        logger.exception("TOP ERROR")
 
         await update.message.reply_text(
             "❌ خطا در جدول."
         )
 
     finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
-# GAME TOP
-# =========================================================
-
-async def gametop(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT name, best_score
-            FROM game_scores
-            ORDER BY best_score DESC
-            LIMIT 10
-        """)
-
-        ranking = cur.fetchall()
-
-        if not ranking:
-
-            await update.message.reply_text(
-                "🎮 هنوز کسی بازی نکرده!"
-            )
-
-            return
-
-        text = (
-            "🎮 جدول رکورد Subway Bird\n\n"
-        )
-
-        medals = [
-            "🥇",
-            "🥈",
-            "🥉"
-        ]
-
-        for i, row in enumerate(
-            ranking,
-            1
-        ):
-
-            name = row[0]
-            score = row[1]
-
-            prefix = (
-                medals[i - 1]
-                if i <= 3
-                else f"{i}."
-            )
-
-            text += (
-                f"{prefix} "
-                f"{name} — "
-                f"{score} امتیاز\n"
-            )
-
-        await update.message.reply_text(
-            text
-        )
-
-    except Exception:
-
-        logger.exception(
-            "GAME TOP ERROR"
-        )
-
-        await update.message.reply_text(
-            "❌ خطا در جدول بازی."
-        )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
-# GAME STATS
-# =========================================================
-
-async def gamestats(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.effective_user:
-        return
-
-    if not update.message:
-        return
-
-    user = update.effective_user
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT
-                name,
-                score,
-                games_played,
-                best_score
-            FROM game_scores
-            WHERE user_id = %s
-        """, (
-            user.id,
-        ))
-
-        result = cur.fetchone()
-
-        if not result:
-
-            await update.message.reply_text(
-                "🎮 هنوز بازی نکردی!"
-            )
-
-            return
-
-        name = result[0]
-        score = result[1]
-        games_played = result[2]
-        best_score = result[3]
-
-        cur.execute("""
-            SELECT COALESCE(
-                SUM(score),
-                0
-            )
-            FROM game_results
-            WHERE user_id = %s
-        """, (
-            user.id,
-        ))
-
-        total_score = cur.fetchone()[0]
-
-        await update.message.reply_text(
-            f"🎮 آمار Subway Bird\n\n"
-            f"👤 {name}\n"
-            f"🕹 بازی‌ها: {games_played}\n"
-            f"📊 آخرین امتیاز: {score}\n"
-            f"➕ مجموع: {total_score}\n"
-            f"🏆 رکورد: {best_score}"
-        )
-
-    except Exception:
-
-        logger.exception(
-            "GAME STATS ERROR"
-        )
-
-        await update.message.reply_text(
-            "❌ خطا در آمار."
-        )
-
-    finally:
-
         if cur:
             cur.close()
 
@@ -978,11 +659,9 @@ async def playerstats(
     reply = update.message.reply_to_message
 
     if not reply:
-
         await update.message.reply_text(
             "❌ روی پیام شخص Reply کن."
         )
-
         return
 
     target = reply.from_user
@@ -994,67 +673,82 @@ async def playerstats(
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
         cur.execute("""
             SELECT
                 name,
-                score,
-                games_played,
-                best_score
-            FROM game_scores
+                coins
+            FROM users
             WHERE user_id = %s
         """, (
             target.id,
         ))
 
-        result = cur.fetchone()
+        user = cur.fetchone()
 
-        if not result:
-
+        if not user:
             await update.message.reply_text(
-                "❌ بازیکن اطلاعاتی نداره."
+                "❌ این کاربر هنوز ثبت نشده."
             )
-
             return
 
         cur.execute("""
-            SELECT COALESCE(
-                SUM(score),
-                0
-            )
-            FROM game_results
+            SELECT
+                answered,
+                correct,
+                coins_earned
+            FROM quiz_user_stats
             WHERE user_id = %s
         """, (
             target.id,
         ))
 
-        total_score = cur.fetchone()[0]
+        quiz = cur.fetchone()
+
+        if quiz:
+            answered = quiz[0]
+            correct = quiz[1]
+            quiz_coins = quiz[2]
+        else:
+            answered = 0
+            correct = 0
+            quiz_coins = 0
+
+        cur.execute("""
+            SELECT amount
+            FROM market_holdings
+            WHERE user_id = %s
+        """, (
+            target.id,
+        ))
+
+        holding = cur.fetchone()
+
+        angrycoin = holding[0] if holding else 0
 
         await update.message.reply_text(
-            f"🎮 آمار بازیکن\n\n"
-            f"👤 {result[0]}\n"
+            f"📊 آمار بازیکن\n\n"
+            f"👤 {user[0]}\n"
             f"🆔 {target.id}\n"
-            f"🕹 بازی‌ها: {result[2]}\n"
-            f"📊 آخرین: {result[1]}\n"
-            f"➕ مجموع: {total_score}\n"
-            f"🏆 رکورد: {result[3]}"
+            f"🪙 کوین: {user[1]}\n\n"
+            f"🧠 Quiz:\n"
+            f"• پاسخ‌ها: {answered}\n"
+            f"• درست: {correct}\n"
+            f"• درآمد Quiz: {quiz_coins} 🪙\n\n"
+            f"📈 AngryCoin:\n"
+            f"• سهام: {angrycoin}"
         )
 
     except Exception:
-
-        logger.exception(
-            "PLAYER STATS ERROR"
-        )
+        logger.exception("PLAYER STATS ERROR")
 
         await update.message.reply_text(
-            "❌ خطا."
+            "❌ خطا در گرفتن آمار."
         )
 
     finally:
-
         if cur:
             cur.close()
 
@@ -1082,33 +776,23 @@ async def addcoins(
     reply = update.message.reply_to_message
 
     if not reply:
-
         await update.message.reply_text(
             "❌ روی پیام شخص Reply کن."
         )
-
         return
 
     if not context.args:
-
         await update.message.reply_text(
-            "❌ مثال:\n/addcoins 100"
+            "مثال:\n/addcoins 1000"
         )
-
         return
 
     try:
-
-        amount = int(
-            context.args[0]
-        )
-
+        amount = int(context.args[0])
     except ValueError:
-
         await update.message.reply_text(
             "❌ مقدار باید عدد باشد."
         )
-
         return
 
     if amount <= 0:
@@ -1121,27 +805,53 @@ async def addcoins(
 
     name = target.first_name or "کاربر"
 
-    try:
+    conn = None
+    cur = None
 
-        add_coins(
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO users (
+                user_id,
+                name,
+                coins,
+                last_message
+            )
+            VALUES (%s, %s, %s, 0)
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                coins = users.coins + EXCLUDED.coins,
+                name = EXCLUDED.name
+        """, (
             target.id,
             name,
             amount
-        )
+        ))
+
+        conn.commit()
 
         await update.message.reply_text(
             f"✅ {amount} 🪙 به {name} اضافه شد."
         )
 
     except Exception:
+        if conn:
+            conn.rollback()
 
-        logger.exception(
-            "ADD COINS ERROR"
-        )
+        logger.exception("ADD COINS ERROR")
 
         await update.message.reply_text(
             "❌ خطا."
         )
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
 
 
 # =========================================================
@@ -1165,23 +875,23 @@ async def removecoins(
     reply = update.message.reply_to_message
 
     if not reply:
-
         await update.message.reply_text(
             "❌ روی پیام شخص Reply کن."
         )
-
         return
 
     if not context.args:
+        await update.message.reply_text(
+            "مثال:\n/removecoins 100"
+        )
         return
 
     try:
-
-        amount = int(
-            context.args[0]
-        )
-
+        amount = int(context.args[0])
     except ValueError:
+        await update.message.reply_text(
+            "❌ مقدار باید عدد باشد."
+        )
         return
 
     if amount <= 0:
@@ -1192,76 +902,112 @@ async def removecoins(
     if not target:
         return
 
-    name = target.first_name or "کاربر"
-
     conn = None
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT coins
-            FROM users
+            UPDATE users
+            SET coins = GREATEST(coins - %s, 0)
             WHERE user_id = %s
-            FOR UPDATE
         """, (
-            target.id,
-        ))
-
-        row = cur.fetchone()
-
-        coins = int(row[0]) if row else 0
-
-        removed = min(
             amount,
-            coins
-        )
-
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES
-            (%s, %s, %s, 0)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                coins = EXCLUDED.coins
-        """, (
-            target.id,
-            name,
-            coins - removed
+            target.id
         ))
 
         conn.commit()
 
         await update.message.reply_text(
-            f"✅ {removed} 🪙 از {name} کم شد."
+            f"✅ {amount} 🪙 از کاربر کم شد."
         )
 
     except Exception:
-
         if conn:
             conn.rollback()
 
-        logger.exception(
-            "REMOVE COINS ERROR"
-        )
+        logger.exception("REMOVE COINS ERROR")
 
         await update.message.reply_text(
             "❌ خطا."
         )
 
     finally:
+        if cur:
+            cur.close()
 
+        release_db(conn)
+
+
+# =========================================================
+# SET GROUP
+# =========================================================
+
+async def setgroup(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.effective_user:
+        return
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.effective_chat:
+        return
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text(
+            "❌ این دستور باید داخل گروه اجرا شود."
+        )
+        return
+
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO bot_groups (
+                chat_id,
+                title
+            )
+            VALUES (%s, %s)
+
+            ON CONFLICT (chat_id)
+            DO UPDATE SET title = EXCLUDED.title
+        """, (
+            chat.id,
+            chat.title or "گروه"
+        ))
+
+        conn.commit()
+
+        await update.message.reply_text(
+            "✅ این گروه ثبت شد."
+        )
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception("SET GROUP ERROR")
+
+        await update.message.reply_text(
+            "❌ خطا."
+        )
+
+    finally:
         if cur:
             cur.close()
 
@@ -1286,95 +1032,15 @@ async def say(
     if not update.message:
         return
 
-    if not context.args:
-        return
+    text = " ".join(context.args).strip()
 
-    await update.message.reply_text(
-        " ".join(context.args)
-    )
-
-
-# =========================================================
-# SET GROUP
-# =========================================================
-
-async def setgroup(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.effective_user:
-        return
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    if not update.message:
-        return
-
-    if update.message.chat.type not in (
-        "group",
-        "supergroup"
-    ):
-
+    if not text:
         await update.message.reply_text(
-            "❌ این دستور رو داخل گروه بزن."
+            "مثال:\n/say سلام بچه‌ها"
         )
-
         return
 
-    chat = update.message.chat
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO bot_groups
-            (
-                chat_id,
-                title
-            )
-            VALUES
-            (%s, %s)
-
-            ON CONFLICT (chat_id)
-            DO UPDATE SET
-                title = EXCLUDED.title
-        """, (
-            chat.id,
-            chat.title or "گروه"
-        ))
-
-        conn.commit()
-
-        await update.message.reply_text(
-            f"✅ گروه «{chat.title}» ثبت شد."
-        )
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        logger.exception(
-            "SET GROUP ERROR"
-        )
-
-        await update.message.reply_text(
-            "❌ خطا."
-        )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
+    await update.message.reply_text(text)
 
 
 # =========================================================
@@ -1395,18 +1061,18 @@ async def groupmsg(
     if not update.message:
         return
 
-    if not context.args:
-        return
+    text = " ".join(context.args).strip()
 
-    text = " ".join(
-        context.args
-    )
+    if not text:
+        await update.message.reply_text(
+            "مثال:\n/groupmsg سلام"
+        )
+        return
 
     conn = None
     cur = None
 
     try:
-
         conn = get_db()
         cur = conn.cursor()
 
@@ -1417,64 +1083,843 @@ async def groupmsg(
 
         groups = cur.fetchall()
 
-    except Exception:
+        sent = 0
 
-        logger.exception(
-            "GET GROUPS ERROR"
+        for row in groups:
+            chat_id = row[0]
+
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text
+                )
+
+                sent += 1
+
+            except Exception:
+                logger.exception(
+                    "Could not send group message."
+                )
+
+        await update.message.reply_text(
+            f"✅ پیام به {sent} گروه ارسال شد."
         )
 
-        return
+    except Exception:
+        logger.exception("GROUPMSG ERROR")
 
     finally:
-
         if cur:
             cur.close()
 
         release_db(conn)
 
-    sent = 0
 
-    for row in groups:
+# =========================================================
+# QUIZ QUESTIONS
+# =========================================================
 
-        try:
+QUESTIONS = [
 
-            await context.bot.send_message(
-                chat_id=row[0],
-                text=text
-            )
+    (
+        "پایتخت ایران کدام است؟",
+        ["تهران", "تبریز", "اصفهان", "شیراز"],
+        0
+    ),
 
-            sent += 1
+    (
+        "بزرگ‌ترین سیاره منظومه شمسی کدام است؟",
+        ["زمین", "مریخ", "مشتری", "زحل"],
+        2
+    ),
 
-        except Exception:
-            logger.exception(
-                "GROUP SEND ERROR"
-            )
+    (
+        "آب در چند درجه سانتی‌گراد در فشار معمولی می‌جوشد؟",
+        ["50", "75", "100", "150"],
+        2
+    ),
 
-    await update.message.reply_text(
-        f"📢 ارسال شد!\n\n"
-        f"✅ موفق: {sent}"
-    )
+    (
+        "کدام سیاره به سیاره سرخ معروف است؟",
+        ["زهره", "مریخ", "مشتری", "عطارد"],
+        1
+    ),
+
+    (
+        "بزرگ‌ترین اقیانوس جهان کدام است؟",
+        ["اطلس", "هند", "آرام", "منجمد شمالی"],
+        2
+    ),
+
+    (
+        "کدام حیوان سریع‌تر می‌دود؟",
+        ["یوزپلنگ", "فیل", "اسب آبی", "خرس"],
+        0
+    ),
+
+    (
+        "واحد اندازه‌گیری جریان الکتریکی چیست؟",
+        ["ولت", "آمپر", "وات", "اهم"],
+        1
+    ),
+
+    (
+        "کدام گاز بیشترین مقدار را در جو زمین دارد؟",
+        ["اکسیژن", "دی‌اکسید کربن", "نیتروژن", "هیدروژن"],
+        2
+    ),
+
+    (
+        "تعداد قاره‌های زمین چند تاست؟",
+        ["5", "6", "7", "8"],
+        2
+    ),
+
+    (
+        "کدام فلز نماد شیمیایی Fe دارد؟",
+        ["طلا", "آهن", "نقره", "مس"],
+        1
+    ),
+
+    (
+        "اولین سیاره منظومه شمسی کدام است؟",
+        ["عطارد", "زهره", "زمین", "مریخ"],
+        0
+    ),
+
+    (
+        "کدام اندام وظیفه پمپاژ خون را دارد؟",
+        ["ریه", "کبد", "قلب", "کلیه"],
+        2
+    ),
+
+    (
+        "کدام کشور به سرزمین آفتاب تابان معروف است؟",
+        ["چین", "ژاپن", "کره جنوبی", "هند"],
+        1
+    ),
+
+    (
+        "عدد اول بعد از 7 کدام است؟",
+        ["8", "9", "10", "11"],
+        3
+    ),
+
+    (
+        "کدام پرنده نمی‌تواند پرواز کند؟",
+        ["عقاب", "پنگوئن", "کبوتر", "شاهین"],
+        1
+    ),
+
+    (
+        "کدام سیاره نزدیک‌ترین سیاره به خورشید است؟",
+        ["عطارد", "زمین", "مریخ", "زهره"],
+        0
+    ),
+
+    (
+        "نماد شیمیایی طلا چیست؟",
+        ["Ag", "Au", "Fe", "Cu"],
+        1
+    ),
+
+    (
+        "کدام کشور بیشترین جمعیت را در آفریقا دارد؟",
+        ["مصر", "نیجریه", "آفریقای جنوبی", "الجزایر"],
+        1
+    ),
+
+    (
+        "چند ضلع در یک شش‌ضلعی وجود دارد؟",
+        ["5", "6", "7", "8"],
+        1
+    ),
+
+    (
+        "کدام جانور پستاندار است؟",
+        ["مار", "قورباغه", "دلفین", "عقاب"],
+        2
+    ),
+
+    (
+        "بزرگ‌ترین قاره جهان کدام است؟",
+        ["آفریقا", "اروپا", "آسیا", "آمریکای شمالی"],
+        2
+    ),
+
+    (
+        "کدام ماده برای تنفس انسان ضروری است؟",
+        ["نیتروژن", "اکسیژن", "هلیوم", "متان"],
+        1
+    ),
+
+    (
+        "کدام کشور برج ایفل در آن قرار دارد؟",
+        ["ایتالیا", "فرانسه", "آلمان", "اسپانیا"],
+        1
+    ),
+
+    (
+        "رنگ حاصل از ترکیب آبی و زرد چیست؟",
+        ["سبز", "بنفش", "نارنجی", "قرمز"],
+        0
+    ),
+
+    (
+        "کدام عدد بر 2 بخش‌پذیر است؟",
+        ["13", "17", "21", "24"],
+        3
+    ),
+
+    (
+        "کدام سیاره حلقه‌های معروف دارد؟",
+        ["زمین", "زحل", "مریخ", "عطارد"],
+        1
+    ),
+
+    (
+        "کدام بخش گیاه آب را از خاک جذب می‌کند؟",
+        ["گل", "برگ", "ریشه", "میوه"],
+        2
+    ),
+
+    (
+        "پایتخت ژاپن کدام است؟",
+        ["کیوتو", "توکیو", "اوساکا", "هیروشیما"],
+        1
+    ),
+
+    (
+        "کدام حیوان به سلطان جنگل معروف است؟",
+        ["ببر", "شیر", "پلنگ", "گرگ"],
+        1
+    ),
+
+    (
+        "چند دقیقه در یک ساعت وجود دارد؟",
+        ["30", "45", "60", "90"],
+        2
+    ),
+
+    (
+        "کدام سیاره بزرگ‌ترین قمر منظومه شمسی را دارد؟",
+        ["مشتری", "زمین", "مریخ", "زحل"],
+        0
+    ),
+
+    (
+        "کدام زبان بیشترین گویشور بومی را دارد؟",
+        ["انگلیسی", "چینی ماندارین", "فرانسوی", "اسپانیایی"],
+        1
+    ),
+
+    (
+        "کدام کشور شکل چکمه دارد؟",
+        ["فرانسه", "ایتالیا", "یونان", "پرتغال"],
+        1
+    ),
+
+    (
+        "خورشید یک چیست؟",
+        ["سیاره", "ستاره", "قمر", "سیارک"],
+        1
+    ),
+
+    (
+        "کدام فلز در دمای اتاق مایع است؟",
+        ["آهن", "جیوه", "مس", "آلومینیوم"],
+        1
+    ),
+
+    (
+        "کدام اقیانوس بین آفریقا و استرالیا قرار دارد؟",
+        ["اطلس", "هند", "آرام", "شمالگان"],
+        1
+    ),
+
+    (
+        "کدام کشور اهرام جیزه را دارد؟",
+        ["مصر", "عراق", "مکزیک", "یونان"],
+        0
+    ),
+
+    (
+        "کدام عضو بدن مسئول اصلی تصفیه خون است؟",
+        ["قلب", "کلیه", "معده", "ریه"],
+        1
+    ),
+
+    (
+        "کدام عدد مربع کامل است؟",
+        ["18", "20", "25", "30"],
+        2
+    ),
+
+    (
+        "کدام حیوان بزرگ‌ترین حیوان روی زمین است؟",
+        ["فیل", "نهنگ آبی", "کوسه سفید", "زرافه"],
+        1
+    ),
+
+    (
+        "کدام سیاره بیشترین شباهت اندازه‌ای به زمین دارد؟",
+        ["مریخ", "زهره", "مشتری", "نپتون"],
+        1
+    ),
+
+    (
+        "کدام کشور دیوار بزرگ معروف را دارد؟",
+        ["چین", "هند", "ژاپن", "مغولستان"],
+        0
+    ),
+
+    (
+        "کدام عنصر نماد O دارد؟",
+        ["طلا", "اکسیژن", "اوسمیم", "نقره"],
+        1
+    ),
+
+    (
+        "یک کیلومتر چند متر است؟",
+        ["10", "100", "1000", "10000"],
+        2
+    ),
+
+    (
+        "کدام جانور دوزیست است؟",
+        ["مار", "قورباغه", "گربه", "عقاب"],
+        1
+    ),
+
+    (
+        "پایتخت ایتالیا چیست؟",
+        ["میلان", "ونیز", "رم", "ناپل"],
+        2
+    ),
+
+    (
+        "کدام سیاره به خورشید نزدیک‌تر است؟",
+        ["زهره", "عطارد", "زمین", "مریخ"],
+        1
+    ),
+
+    (
+        "کدام وسیله برای اندازه‌گیری دما استفاده می‌شود؟",
+        ["فشارسنج", "دماسنج", "ترازو", "ولت‌متر"],
+        1
+    ),
+
+    (
+        "کدام شکل سه ضلع دارد؟",
+        ["مربع", "مثلث", "پنج‌ضلعی", "دایره"],
+        1
+    ),
+
+    (
+        "کدام گاز برای فتوسنتز گیاهان استفاده می‌شود؟",
+        ["اکسیژن", "هیدروژن", "دی‌اکسید کربن", "نیتروژن"],
+        2
+    ),
+
+    (
+        "کدام کشور به سرزمین هزار دریاچه معروف است؟",
+        ["فنلاند", "نروژ", "سوئد", "دانمارک"],
+        0
+    ),
+
+    (
+        "کدام سیاره دارای بیشترین دمای سطحی در منظومه شمسی است؟",
+        ["عطارد", "زهره", "مریخ", "مشتری"],
+        1
+    ),
+
+    (
+        "کدام بخش سلول مرکز کنترل فعالیت‌های سلول است؟",
+        ["هسته", "غشا", "سیتوپلاسم", "ریبوزوم"],
+        0
+    ),
+
+    (
+        "کدام کشور فوتبال را در المپیک مدرن اولیه بیشتر توسعه داد؟",
+        ["برزیل", "انگلیس", "آمریکا", "ژاپن"],
+        1
+    ),
+
+    (
+        "کدام قمر متعلق به زمین است؟",
+        ["تایتان", "ماه", "اروپا", "گانیمد"],
+        1
+    ),
+
+    (
+        "کدام عدد اول است؟",
+        ["21", "27", "29", "33"],
+        2
+    ),
+
+    (
+        "کدام ماده در دمای اتاق جامد است؟",
+        ["اکسیژن", "آهن", "هلیوم", "نیتروژن"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش برلین است؟",
+        ["اتریش", "آلمان", "بلژیک", "هلند"],
+        1
+    ),
+
+    (
+        "کدام دستگاه برای مشاهده اجرام آسمانی استفاده می‌شود؟",
+        ["میکروسکوپ", "تلسکوپ", "بارومتر", "دماسنج"],
+        1
+    ),
+
+    (
+        "کدام اقیانوس بزرگ‌ترین اقیانوس جهان است؟",
+        ["هند", "آرام", "اطلس", "قطب شمال"],
+        1
+    ),
+
+    (
+        "کدام ماده باعث قرمز شدن خون می‌شود؟",
+        ["هموگلوبین", "کلروفیل", "کراتین", "کلاژن"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش مادرید است؟",
+        ["پرتغال", "اسپانیا", "ایتالیا", "فرانسه"],
+        1
+    ),
+
+    (
+        "کدام سیاره دارای لکه قرمز بزرگ معروف است؟",
+        ["مریخ", "مشتری", "زحل", "نپتون"],
+        1
+    ),
+
+    (
+        "کدام ماده در گیاهان سبز نور را جذب می‌کند؟",
+        ["هموگلوبین", "کلروفیل", "نشاسته", "گلوکز"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش مسکو است؟",
+        ["اوکراین", "روسیه", "بلاروس", "لهستان"],
+        1
+    ),
+
+    (
+        "کدام اندام اکسیژن را وارد خون می‌کند؟",
+        ["قلب", "ریه", "کبد", "معده"],
+        1
+    ),
+
+    (
+        "کدام عدد حاصل 9×9 است؟",
+        ["72", "81", "90", "99"],
+        1
+    ),
+
+    (
+        "کدام سیاره دورترین سیاره شناخته‌شده منظومه شمسی است؟",
+        ["اورانوس", "نپتون", "زحل", "مریخ"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش کانبرا است؟",
+        ["استرالیا", "کانادا", "نیوزیلند", "آفریقای جنوبی"],
+        0
+    ),
+
+    (
+        "کدام حیوان گردن بسیار بلندی دارد؟",
+        ["زرافه", "کرگدن", "فیل", "گورخر"],
+        0
+    ),
+
+    (
+        "کدام واحد برای اندازه‌گیری انرژی الکتریکی رایج است؟",
+        ["وات", "کیلووات‌ساعت", "ولت", "آمپر"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش اتاوا است؟",
+        ["آمریکا", "کانادا", "مکزیک", "برزیل"],
+        1
+    ),
+
+    (
+        "کدام عنصر برای تنفس ضروری است؟",
+        ["اکسیژن", "طلا", "آهن", "مس"],
+        0
+    ),
+
+    (
+        "کدام شکل هیچ ضلعی ندارد؟",
+        ["مثلث", "مربع", "دایره", "مستطیل"],
+        2
+    ),
+
+    (
+        "کدام قاره سردترین قاره جهان است؟",
+        ["آسیا", "اروپا", "جنوبگان", "آفریقا"],
+        2
+    ),
+
+    (
+        "کدام سیاره معروف به سیاره آبی است؟",
+        ["زمین", "مریخ", "زهره", "زحل"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش سئول است؟",
+        ["کره جنوبی", "چین", "ژاپن", "ویتنام"],
+        0
+    ),
+
+    (
+        "کدام جانور معمولاً با هشت پا شناخته می‌شود؟",
+        ["اختاپوس", "خرچنگ", "دلفین", "کوسه"],
+        0
+    ),
+
+    (
+        "کدام عدد بر 5 بخش‌پذیر است؟",
+        ["17", "23", "35", "42"],
+        2
+    ),
+
+    (
+        "کدام ماده غذایی منبع مهم کلسیم است؟",
+        ["شیر", "برنج", "سیب", "روغن"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش آنکارا است؟",
+        ["ترکیه", "ایران", "گرجستان", "ارمنستان"],
+        0
+    ),
+
+    (
+        "کدام نیرو ما را به سمت زمین می‌کشد؟",
+        ["اصطکاک", "گرانش", "مغناطیس", "الکتریسیته"],
+        1
+    ),
+
+    (
+        "کدام سیاره به دلیل حلقه‌هایش معروف است؟",
+        ["مریخ", "زحل", "زمین", "زهره"],
+        1
+    ),
+
+    (
+        "کدام اندام غذا را هضم می‌کند؟",
+        ["معده", "ریه", "قلب", "مغز"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش واشنگتن دی‌سی است؟",
+        ["کانادا", "آمریکا", "مکزیک", "برزیل"],
+        1
+    ),
+
+    (
+        "کدام فلز نماد Ag دارد؟",
+        ["طلا", "نقره", "آهن", "مس"],
+        1
+    ),
+
+    (
+        "کدام عدد حاصل 12×12 است؟",
+        ["124", "134", "144", "154"],
+        2
+    ),
+
+    (
+        "کدام سیاره دارای قمر فوبوس است؟",
+        ["زمین", "مریخ", "زحل", "زهره"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش پکن است؟",
+        ["چین", "ژاپن", "کره جنوبی", "تایلند"],
+        0
+    ),
+
+    (
+        "کدام اندام مرکز اصلی دستگاه عصبی است؟",
+        ["مغز", "قلب", "کبد", "ریه"],
+        0
+    ),
+
+    (
+        "کدام گاز برای سوختن لازم است؟",
+        ["اکسیژن", "نیتروژن", "هلیوم", "آرگون"],
+        0
+    ),
+
+    (
+        "کدام قاره بیشترین وسعت را دارد؟",
+        ["آفریقا", "آسیا", "اروپا", "استرالیا"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش لیسبون است؟",
+        ["اسپانیا", "پرتغال", "ایتالیا", "یونان"],
+        1
+    ),
+
+    (
+        "کدام وسیله وزن را اندازه می‌گیرد؟",
+        ["ترازو", "دماسنج", "خط‌کش", "ساعت"],
+        0
+    ),
+
+    (
+        "کدام عدد حاصل 15+25 است؟",
+        ["30", "35", "40", "45"],
+        2
+    ),
+
+    (
+        "کدام سیاره دارای قمر تایتان است؟",
+        ["زحل", "مریخ", "زمین", "زهره"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش دهلی نو است؟",
+        ["پاکستان", "هند", "نپال", "بنگلادش"],
+        1
+    ),
+
+    (
+        "کدام بخش گیاه معمولاً فتوسنتز می‌کند؟",
+        ["ریشه", "برگ", "دانه", "ریشه‌چه"],
+        1
+    ),
+
+    (
+        "کدام عدد اول است؟",
+        ["15", "19", "21", "25"],
+        1
+    ),
+
+    (
+        "کدام حیوان بزرگ‌ترین پرنده زنده جهان است؟",
+        ["عقاب", "شترمرغ", "پنگوئن", "کبوتر"],
+        1
+    ),
+
+    (
+        "کدام کشور پایتختش ریاض است؟",
+        ["عربستان سعودی", "عراق", "اردن", "عمان"],
+        0
+    ),
+
+    (
+        "کدام فلز رسانای بسیار خوب برق است؟",
+        ["چوب", "مس", "شیشه", "پلاستیک"],
+        1
+    ),
+
+    (
+        "کدام سیاره دارای روز بسیار طولانی است؟",
+        ["زهره", "مریخ", "زمین", "نپتون"],
+        0
+    ),
+
+    (
+        "کدام کشور پایتختش آتن است؟",
+        ["یونان", "ایتالیا", "ترکیه", "قبرس"],
+        0
+    ),
+
+]
 
 
 # =========================================================
-# QUIZ - SEND QUESTION
+# LOAD DEFAULT QUESTIONS
 # =========================================================
 
-async def quiz(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.effective_message:
-        return
-
-    message = update.effective_message
+def load_default_questions():
 
     conn = None
     cur = None
 
     try:
+        conn = get_db()
+        cur = conn.cursor()
 
+        cur.execute("""
+            SELECT COUNT(*)
+            FROM quiz_questions
+        """)
+
+        count = cur.fetchone()[0]
+
+        if count > 0:
+            conn.rollback()
+            return
+
+        for question, options, correct in QUESTIONS:
+
+            cur.execute("""
+                INSERT INTO quiz_questions (
+                    question,
+                    option1,
+                    option2,
+                    option3,
+                    option4,
+                    correct_option,
+                    enabled,
+                    created_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    TRUE,
+                    %s
+                )
+            """, (
+                question,
+                options[0],
+                options[1],
+                options[2],
+                options[3],
+                correct,
+                time.time()
+            ))
+
+        conn.commit()
+
+        logger.info(
+            "Loaded %s default quiz questions.",
+            len(QUESTIONS)
+        )
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "Could not load default questions."
+        )
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# QUIZ COOLDOWN
+# =========================================================
+
+def can_start_quiz(chat_id):
+
+    conn = None
+    cur = None
+
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        now = time.time()
+
+        cur.execute("""
+            SELECT last_question_at
+            FROM quiz_cooldowns
+            WHERE chat_id = %s
+            FOR UPDATE
+        """, (
+            chat_id,
+        ))
+
+        row = cur.fetchone()
+
+        if row:
+            last = row[0]
+
+            if now - last < QUIZ_COOLDOWN:
+
+                remaining = (
+                    QUIZ_COOLDOWN -
+                    (now - last)
+                )
+
+                conn.rollback()
+
+                return False, remaining
+
+            cur.execute("""
+                UPDATE quiz_cooldowns
+                SET last_question_at = %s
+                WHERE chat_id = %s
+            """, (
+                now,
+                chat_id
+            ))
+
+        else:
+
+            cur.execute("""
+                INSERT INTO quiz_cooldowns (
+                    chat_id,
+                    last_question_at
+                )
+                VALUES (%s, %s)
+            """, (
+                chat_id,
+                now
+            ))
+
+        conn.commit()
+
+        return True, 0
+
+    except Exception:
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "QUIZ COOLDOWN ERROR"
+        )
+
+        return False, 0
+
+    finally:
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# GET RANDOM QUESTION
+# =========================================================
+
+def get_random_question():
+
+    conn = None
+    cur = None
+
+    try:
         conn = get_db()
         cur = conn.cursor()
 
@@ -1488,75 +1933,28 @@ async def quiz(
                 option4,
                 correct_option
             FROM quiz_questions
-            WHERE active = TRUE
+            WHERE enabled = TRUE
             ORDER BY RANDOM()
             LIMIT 1
         """)
 
-        question = cur.fetchone()
+        row = cur.fetchone()
 
-        if not question:
+        conn.rollback()
 
-            await message.reply_text(
-                "🧠 هنوز سوالی اضافه نشده!"
-            )
-
-            return
-
-        question_id = question[0]
-
-        options = [
-            question[2],
-            question[3],
-            question[4],
-            question[5]
-        ]
-
-        sent = await context.bot.send_poll(
-            chat_id=message.chat_id,
-            question=question[1],
-            options=options,
-            type=Poll.QUIZ,
-            correct_option_id=question[6],
-            is_anonymous=False
-        )
-
-        cur.execute("""
-            INSERT INTO quiz_polls
-            (
-                poll_id,
-                question_id,
-                chat_id,
-                message_id,
-                created_at
-            )
-            VALUES
-            (%s, %s, %s, %s, %s)
-        """, (
-            sent.poll.id,
-            question_id,
-            message.chat_id,
-            sent.message_id,
-            time.time()
-        ))
-
-        conn.commit()
+        return row
 
     except Exception:
-
         if conn:
             conn.rollback()
 
         logger.exception(
-            "QUIZ ERROR"
+            "GET QUESTION ERROR"
         )
 
-        await message.reply_text(
-            "❌ خطا در ارسال سوال."
-        )
+        return None
 
     finally:
-
         if cur:
             cur.close()
 
@@ -1564,7 +1962,146 @@ async def quiz(
 
 
 # =========================================================
-# QUIZ ANSWER
+# QUIZ COMMAND
+# =========================================================
+
+async def quiz(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.effective_chat:
+        return
+
+    chat = update.effective_chat
+
+    if chat.type not in (
+        "group",
+        "supergroup"
+    ):
+
+        await update.message.reply_text(
+            "❌ Quiz فقط داخل گروه قابل استفاده است."
+        )
+
+        return
+
+    allowed, remaining = can_start_quiz(
+        chat.id
+    )
+
+    if not allowed:
+
+        minutes = int(
+            remaining // 60
+        ) + 1
+
+        await update.message.reply_text(
+            f"⏳ سؤال بعدی حدود "
+            f"{minutes} دقیقه دیگر قابل نمایش است."
+        )
+
+        return
+
+    question = get_random_question()
+
+    if not question:
+
+        await update.message.reply_text(
+            "❌ فعلاً سؤالی وجود ندارد."
+        )
+
+        return
+
+    (
+        question_id,
+        question_text,
+        option1,
+        option2,
+        option3,
+        option4,
+        correct_option
+    ) = question
+
+    options = [
+        option1,
+        option2,
+        option3,
+        option4
+    ]
+
+    try:
+
+        sent = await context.bot.send_poll(
+            chat_id=chat.id,
+            question=question_text,
+            options=options,
+            type=Poll.QUIZ,
+            correct_option_id=correct_option,
+            is_anonymous=False,
+        )
+
+        poll_id = sent.poll.id
+
+        conn = None
+        cur = None
+
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO quiz_polls (
+                    poll_id,
+                    question_id,
+                    chat_id,
+                    message_id,
+                    created_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    %s,
+                    %s
+                )
+            """, (
+                poll_id,
+                question_id,
+                chat.id,
+                sent.message_id,
+                time.time()
+            ))
+
+            conn.commit()
+
+        except Exception:
+            if conn:
+                conn.rollback()
+
+            logger.exception(
+                "QUIZ POLL SAVE ERROR"
+            )
+
+        finally:
+            if cur:
+                cur.close()
+
+            release_db(conn)
+
+    except Exception:
+        logger.exception("QUIZ SEND ERROR")
+
+        await update.message.reply_text(
+            "❌ نتونستم سؤال رو ارسال کنم."
+        )
+
+
+# =========================================================
+# QUIZ POLL ANSWER
 # =========================================================
 
 async def quiz_answer(
@@ -1577,15 +2114,15 @@ async def quiz_answer(
     if not answer:
         return
 
-    if not answer.user:
-        return
-
-    if not answer.option_ids:
-        return
-
     poll_id = answer.poll_id
-    user_id = answer.user.id
-    selected = answer.option_ids[0]
+
+    user = answer.user
+
+    selected = (
+        answer.option_ids[0]
+        if answer.option_ids
+        else None
+    )
 
     conn = None
     cur = None
@@ -1595,7 +2132,10 @@ async def quiz_answer(
         conn = get_db()
         cur = conn.cursor()
 
-        # پیدا کردن سوال
+        # -----------------------------------------
+        # FIND POLL
+        # -----------------------------------------
+
         cur.execute("""
             SELECT question_id
             FROM quiz_polls
@@ -1607,28 +2147,54 @@ async def quiz_answer(
         poll = cur.fetchone()
 
         if not poll:
+            conn.rollback()
             return
 
         question_id = poll[0]
 
+        # -----------------------------------------
+        # PREVENT DOUBLE REWARD
+        # -----------------------------------------
+
         cur.execute("""
-            SELECT
-                correct_option
+            SELECT 1
+            FROM quiz_answers
+            WHERE poll_id = %s
+              AND user_id = %s
+        """, (
+            poll_id,
+            user.id
+        ))
+
+        if cur.fetchone():
+
+            conn.rollback()
+            return
+
+        # -----------------------------------------
+        # GET CORRECT ANSWER
+        # -----------------------------------------
+
+        cur.execute("""
+            SELECT correct_option
             FROM quiz_questions
             WHERE id = %s
         """, (
             question_id,
         ))
 
-        question = cur.fetchone()
+        row = cur.fetchone()
 
-        if not question:
+        if not row:
+
+            conn.rollback()
             return
 
-        correct_option = question[0]
+        correct_option = row[0]
 
         is_correct = (
-            selected == correct_option
+            selected is not None
+            and selected == correct_option
         )
 
         reward = (
@@ -1637,115 +2203,127 @@ async def quiz_answer(
             else 0
         )
 
-        # جلوگیری از دوباره جایزه گرفتن
+        # -----------------------------------------
+        # SAVE ANSWER
+        # -----------------------------------------
+
         cur.execute("""
-            INSERT INTO quiz_answers
-            (
+            INSERT INTO quiz_answers (
                 poll_id,
                 user_id,
                 selected_option,
-                correct,
-                reward,
-                created_at
+                is_correct,
+                coins_awarded,
+                answered_at
             )
-            VALUES
-            (%s, %s, %s, %s, %s, %s)
-
-            ON CONFLICT (poll_id, user_id)
-            DO NOTHING
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s
+            )
         """, (
             poll_id,
-            user_id,
+            user.id,
             selected,
             is_correct,
             reward,
             time.time()
         ))
 
-        if cur.rowcount == 0:
+        # -----------------------------------------
+        # UPDATE USER
+        # -----------------------------------------
 
-            conn.rollback()
-            return
+        name = user.first_name or "کاربر"
 
-        name = (
-            answer.user.first_name
-            or "کاربر"
-        )
-
-        # ثبت امتیاز Quiz
         cur.execute("""
-            INSERT INTO quiz_scores
-            (
+            INSERT INTO users (
                 user_id,
                 name,
-                correct_answers,
-                total_answers,
-                score
+                coins,
+                last_message
             )
-            VALUES
-            (%s, %s, %s, 1, %s)
+            VALUES (
+                %s,
+                %s,
+                %s,
+                0
+            )
 
             ON CONFLICT (user_id)
             DO UPDATE SET
                 name = EXCLUDED.name,
-                correct_answers =
-                    quiz_scores.correct_answers
-                    + EXCLUDED.correct_answers,
-                total_answers =
-                    quiz_scores.total_answers + 1,
-                score =
-                    quiz_scores.score
-                    + EXCLUDED.score
+                coins = users.coins + EXCLUDED.coins
         """, (
-            user_id,
+            user.id,
             name,
+            reward
+        ))
+
+        # -----------------------------------------
+        # UPDATE QUIZ STATS
+        # -----------------------------------------
+
+        cur.execute("""
+            INSERT INTO quiz_user_stats (
+                user_id,
+                answered,
+                correct,
+                coins_earned
+            )
+            VALUES (
+                %s,
+                1,
+                %s,
+                %s
+            )
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                answered =
+                    quiz_user_stats.answered + 1,
+
+                correct =
+                    quiz_user_stats.correct + EXCLUDED.correct,
+
+                coins_earned =
+                    quiz_user_stats.coins_earned
+                    + EXCLUDED.coins_earned
+        """, (
+            user.id,
             1 if is_correct else 0,
             reward
         ))
 
-        # جایزه کوین
-        if reward > 0:
-
-            cur.execute("""
-                INSERT INTO users
-                (
-                    user_id,
-                    name,
-                    coins,
-                    last_message
-                )
-                VALUES
-                (%s, %s, %s, 0)
-
-                ON CONFLICT (user_id)
-                DO UPDATE SET
-                    name = EXCLUDED.name,
-                    coins =
-                        users.coins
-                        + EXCLUDED.coins
-            """, (
-                user_id,
-                name,
-                reward
-            ))
-
         conn.commit()
 
-        if reward > 0:
+        # -----------------------------------------
+        # PRIVATE RESULT
+        # -----------------------------------------
+
+        if is_correct:
 
             try:
-
                 await context.bot.send_message(
-                    chat_id=poll[0] and (
-                        await get_poll_chat_id(
-                            poll_id
-                        )
-                    ),
+                    chat_id=user.id,
                     text=(
-                        f"🧠 آفرین {name}!\n"
-                        f"✅ جواب درست بود!\n"
-                        f"🪙 +{reward} کوین"
+                        "🎉 درست جواب دادی!\n\n"
+                        f"🪙 +{QUIZ_REWARD} کوین"
                     )
+                )
+
+            except Exception:
+                pass
+
+        else:
+
+            try:
+                await context.bot.send_message(
+                    chat_id=user.id,
+                    text="❌ جواب درست نبود!"
                 )
 
             except Exception:
@@ -1759,36 +2337,6 @@ async def quiz_answer(
         logger.exception(
             "QUIZ ANSWER ERROR"
         )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-async def get_poll_chat_id(poll_id):
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT chat_id
-            FROM quiz_polls
-            WHERE poll_id = %s
-        """, (
-            poll_id,
-        ))
-
-        row = cur.fetchone()
-
-        return row[0] if row else None
 
     finally:
 
@@ -1813,6 +2361,8 @@ async def quizscore(
     if not update.message:
         return
 
+    user = update.effective_user
+
     conn = None
     cur = None
 
@@ -1823,13 +2373,13 @@ async def quizscore(
 
         cur.execute("""
             SELECT
-                correct_answers,
-                total_answers,
-                score
-            FROM quiz_scores
+                answered,
+                correct,
+                coins_earned
+            FROM quiz_user_stats
             WHERE user_id = %s
         """, (
-            update.effective_user.id,
+            user.id,
         ))
 
         row = cur.fetchone()
@@ -1837,17 +2387,25 @@ async def quizscore(
         if not row:
 
             await update.message.reply_text(
-                "🧠 هنوز هیچ سوالی جواب ندادی!"
+                "🧠 هنوز در هیچ Quizای شرکت نکردی."
             )
 
             return
 
+        answered = row[0]
+        correct = row[1]
+        coins = row[2]
+
         await update.message.reply_text(
             f"🧠 آمار Quiz\n\n"
-            f"✅ درست: {row[0]}\n"
-            f"📊 پاسخ‌ها: {row[1]}\n"
-            f"🏆 امتیاز: {row[2]}\n"
-            f"🪙 جایزه: {row[2]} کوین"
+            f"📝 پاسخ داده‌شده: {answered}\n"
+            f"✅ جواب درست: {correct}\n"
+            f"🪙 درآمد: {coins} کوین"
+        )
+
+    except Exception:
+        logger.exception(
+            "QUIZ SCORE ERROR"
         )
 
     finally:
@@ -1880,11 +2438,15 @@ async def quiztop(
 
         cur.execute("""
             SELECT
-                name,
-                correct_answers,
-                score
-            FROM quiz_scores
-            ORDER BY score DESC
+                u.name,
+                s.correct,
+                s.coins_earned
+            FROM quiz_user_stats s
+            JOIN users u
+              ON u.user_id = s.user_id
+            ORDER BY
+                s.correct DESC,
+                s.coins_earned DESC
             LIMIT 10
         """)
 
@@ -1893,26 +2455,47 @@ async def quiztop(
         if not rows:
 
             await update.message.reply_text(
-                "🏆 هنوز کسی Quiz بازی نکرده!"
+                "🧠 هنوز کسی Quiz بازی نکرده."
             )
 
             return
 
-        text = "🧠🏆 برترین‌های Quiz\n\n"
+        text = "🧠 جدول Quiz\n\n"
 
-        for i, row in enumerate(
+        medals = [
+            "🥇",
+            "🥈",
+            "🥉"
+        ]
+
+        for index, row in enumerate(
             rows,
             1
         ):
 
+            name = row[0]
+            correct = row[1]
+            coins = row[2]
+
+            prefix = (
+                medals[index - 1]
+                if index <= 3
+                else f"{index}."
+            )
+
             text += (
-                f"{i}. {row[0]} — "
-                f"{row[2]} امتیاز "
-                f"({row[1]} درست)\n"
+                f"{prefix} {name}\n"
+                f"   ✅ {correct} درست"
+                f" | 🪙 {coins}\n"
             )
 
         await update.message.reply_text(
             text
+        )
+
+    except Exception:
+        logger.exception(
+            "QUIZ TOP ERROR"
         )
 
     finally:
@@ -1927,150 +2510,84 @@ async def quiztop(
 # ADD QUESTION
 # =========================================================
 
-ADD_Q_TEXT = 1
-ADD_Q_1 = 2
-ADD_Q_2 = 3
-ADD_Q_3 = 4
-ADD_Q_4 = 5
-ADD_Q_CORRECT = 6
-
-
-async def addquestion_start(
+async def addquestion(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
     if not update.effective_user:
-        return ConversationHandler.END
+        return
 
     if update.effective_user.id != ADMIN_ID:
-        return ConversationHandler.END
+        return
 
     if not update.message:
-        return ConversationHandler.END
+        return
 
-    await update.message.reply_text(
-        "🧠 متن سوال رو بفرست:"
-    )
+    text = update.message.text
 
-    return ADD_Q_TEXT
+    parts = text.split("|")
 
+    if len(parts) != 6:
 
-async def addquestion_text(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
+        await update.message.reply_text(
+            "❌ فرمت اشتباهه.\n\n"
+            "فرمت:\n"
+            "/addquestion سوال | گزینه۱ | گزینه۲ | گزینه۳ | گزینه۴ | جواب\n\n"
+            "جواب باید عدد 1 تا 4 باشد.\n\n"
+            "مثال:\n"
+            "/addquestion پایتخت ایران؟ | تهران | تبریز | شیراز | قم | 1"
+        )
 
-    context.user_data["quiz_question"] = (
-        update.message.text
-    )
+        return
 
-    await update.message.reply_text(
-        "1️⃣ گزینه اول:"
-    )
+    question = parts[0].replace(
+        "/addquestion",
+        "",
+        1
+    ).strip()
 
-    return ADD_Q_1
-
-
-async def addquestion_1(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    context.user_data["quiz_1"] = (
-        update.message.text
-    )
-
-    await update.message.reply_text(
-        "2️⃣ گزینه دوم:"
-    )
-
-    return ADD_Q_2
-
-
-async def addquestion_2(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    context.user_data["quiz_2"] = (
-        update.message.text
-    )
-
-    await update.message.reply_text(
-        "3️⃣ گزینه سوم:"
-    )
-
-    return ADD_Q_3
-
-
-async def addquestion_3(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    context.user_data["quiz_3"] = (
-        update.message.text
-    )
-
-    await update.message.reply_text(
-        "4️⃣ گزینه چهارم:"
-    )
-
-    return ADD_Q_4
-
-
-async def addquestion_4(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    context.user_data["quiz_4"] = (
-        update.message.text
-    )
-
-    await update.message.reply_text(
-        "✅ شماره جواب صحیح رو بفرست:\n"
-        "1 / 2 / 3 / 4"
-    )
-
-    return ADD_Q_CORRECT
-
-
-async def addquestion_correct(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return ConversationHandler.END
+    options = [
+        parts[1].strip(),
+        parts[2].strip(),
+        parts[3].strip(),
+        parts[4].strip()
+    ]
 
     try:
-
         correct = int(
-            update.message.text.strip()
-        )
+            parts[5].strip()
+        ) - 1
 
     except ValueError:
 
         await update.message.reply_text(
-            "❌ فقط عدد 1 تا 4."
+            "❌ جواب باید عدد 1 تا 4 باشد."
         )
 
-        return ADD_Q_CORRECT
+        return
 
-    if correct not in (
-        1,
-        2,
-        3,
-        4
+    if not question:
+        return
+
+    if any(
+        not option
+        for option in options
     ):
 
         await update.message.reply_text(
-            "❌ فقط 1 تا 4."
+            "❌ همه گزینه‌ها باید پر باشند."
         )
 
-        return ADD_Q_CORRECT
+        return
+
+    if correct not in range(4):
+
+        await update.message.reply_text(
+            "❌ جواب باید بین 1 تا 4 باشد."
+        )
+
+        return
 
     conn = None
     cur = None
@@ -2081,33 +2598,44 @@ async def addquestion_correct(
         cur = conn.cursor()
 
         cur.execute("""
-            INSERT INTO quiz_questions
-            (
+            INSERT INTO quiz_questions (
                 question,
                 option1,
                 option2,
                 option3,
                 option4,
                 correct_option,
-                active,
+                enabled,
                 created_at
             )
-            VALUES
-            (%s, %s, %s, %s, %s, %s, TRUE, %s)
+            VALUES (
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                %s,
+                TRUE,
+                %s
+            )
+            RETURNING id
         """, (
-            context.user_data["quiz_question"],
-            context.user_data["quiz_1"],
-            context.user_data["quiz_2"],
-            context.user_data["quiz_3"],
-            context.user_data["quiz_4"],
-            correct - 1,
+            question,
+            options[0],
+            options[1],
+            options[2],
+            options[3],
+            correct,
             time.time()
         ))
+
+        question_id = cur.fetchone()[0]
 
         conn.commit()
 
         await update.message.reply_text(
-            "✅ سوال با موفقیت اضافه شد!"
+            f"✅ سؤال با موفقیت اضافه شد.\n"
+            f"🆔 ID: {question_id}"
         )
 
     except Exception:
@@ -2120,7 +2648,7 @@ async def addquestion_correct(
         )
 
         await update.message.reply_text(
-            "❌ خطا در ذخیره سوال."
+            "❌ خطا در اضافه کردن سؤال."
         )
 
     finally:
@@ -2130,32 +2658,291 @@ async def addquestion_correct(
 
         release_db(conn)
 
-    context.user_data.clear()
 
-    return ConversationHandler.END
+# =========================================================
+# QUESTIONS
+# =========================================================
 
-
-async def addquestion_cancel(
+async def questions(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    context.user_data.clear()
+    if not update.effective_user:
+        return
 
-    if update.message:
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.message:
+        return
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                id,
+                question,
+                enabled
+            FROM quiz_questions
+            ORDER BY id DESC
+            LIMIT 30
+        """)
+
+        rows = cur.fetchall()
+
+        if not rows:
+
+            await update.message.reply_text(
+                "❌ هیچ سؤالی وجود ندارد."
+            )
+
+            return
+
+        text = "🧠 لیست سؤال‌ها\n\n"
+
+        for row in rows:
+
+            status = (
+                "🟢"
+                if row[2]
+                else "🔴"
+            )
+
+            text += (
+                f"{status} #{row[0]}\n"
+                f"{row[1]}\n\n"
+            )
 
         await update.message.reply_text(
-            "❌ افزودن سوال لغو شد."
+            text[:4000]
         )
 
-    return ConversationHandler.END
+    except Exception:
+        logger.exception(
+            "QUESTIONS ERROR"
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# DELETE QUESTION
+# =========================================================
+
+async def delquestion(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.effective_user:
+        return
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.message:
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "مثال:\n/delquestion 5"
+        )
+
+        return
+
+    try:
+        question_id = int(
+            context.args[0]
+        )
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ ID نامعتبر."
+        )
+
+        return
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            DELETE FROM quiz_questions
+            WHERE id = %s
+        """, (
+            question_id,
+        ))
+
+        deleted = cur.rowcount
+
+        conn.commit()
+
+        if deleted:
+
+            await update.message.reply_text(
+                "✅ سؤال حذف شد."
+            )
+
+        else:
+
+            await update.message.reply_text(
+                "❌ چنین سؤالی پیدا نشد."
+            )
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "DELETE QUESTION ERROR"
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# ENABLE / DISABLE QUESTION
+# =========================================================
+
+async def set_question_enabled(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    enabled: bool
+):
+
+    if not update.effective_user:
+        return
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.message:
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "مثال:\n"
+            "/enablequestion 5"
+        )
+
+        return
+
+    try:
+        question_id = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ ID نامعتبر."
+        )
+
+        return
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE quiz_questions
+            SET enabled = %s
+            WHERE id = %s
+        """, (
+            enabled,
+            question_id
+        ))
+
+        changed = cur.rowcount
+
+        conn.commit()
+
+        if changed:
+
+            await update.message.reply_text(
+                "✅ انجام شد."
+            )
+
+        else:
+
+            await update.message.reply_text(
+                "❌ سؤال پیدا نشد."
+            )
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "QUESTION ENABLE ERROR"
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+async def enablequestion(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await set_question_enabled(
+        update,
+        context,
+        True
+    )
+
+
+async def disablequestion(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    await set_question_enabled(
+        update,
+        context,
+        False
+    )
 
 
 # =========================================================
 # MARKET HELPERS
 # =========================================================
 
-def get_market():
+def get_market_price():
 
     conn = None
     cur = None
@@ -2168,24 +2955,28 @@ def get_market():
         cur.execute("""
             SELECT
                 name,
-                price,
-                group_id,
-                updated_at
-            FROM angrycoin_market
+                symbol,
+                price
+            FROM market
             WHERE id = 1
         """)
 
         row = cur.fetchone()
 
-        if not row:
-            return None
+        conn.rollback()
 
-        return {
-            "name": row[0],
-            "price": float(row[1]),
-            "group_id": row[2],
-            "updated_at": row[3]
-        }
+        return row
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "MARKET PRICE ERROR"
+        )
+
+        return None
 
     finally:
 
@@ -2195,7 +2986,7 @@ def get_market():
         release_db(conn)
 
 
-def get_holding(user_id):
+def market_group_enabled(chat_id):
 
     conn = None
     cur = None
@@ -2206,20 +2997,25 @@ def get_holding(user_id):
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT amount
-            FROM angrycoin_holdings
-            WHERE user_id = %s
+            SELECT enabled
+            FROM market_groups
+            WHERE chat_id = %s
         """, (
-            user_id,
+            chat_id,
         ))
 
         row = cur.fetchone()
 
-        return (
-            float(row[0])
-            if row
-            else 0
-        )
+        conn.rollback()
+
+        return bool(row and row[0])
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        return False
 
     finally:
 
@@ -2229,23 +3025,8 @@ def get_holding(user_id):
         release_db(conn)
 
 
-def market_group_allowed(chat_id):
-
-    market = get_market()
-
-    if not market:
-        return False
-
-    group_id = market["group_id"]
-
-    if group_id is None:
-        return True
-
-    return chat_id == group_id
-
-
 # =========================================================
-# MARKET COMMAND
+# MARKET
 # =========================================================
 
 async def market(
@@ -2259,41 +3040,582 @@ async def market(
     if not update.effective_chat:
         return
 
-    if not market_group_allowed(
-        update.effective_chat.id
+    chat = update.effective_chat
+
+    if chat.type in (
+        "group",
+        "supergroup"
     ):
 
+        if not market_group_enabled(
+            chat.id
+        ):
+
+            await update.message.reply_text(
+                "📈 بازار AngryCoin در این گروه فعال نیست."
+            )
+
+            return
+
+    data = get_market_price()
+
+    if not data:
+
         await update.message.reply_text(
-            "📈 بورس AngryCoin در این گروه فعال نیست."
+            "❌ بازار در دسترس نیست."
         )
 
         return
 
-    data = get_market()
+    name = data[0]
+    symbol = data[1]
+    price = data[2]
 
-    if not data:
-        return
+    user = update.effective_user
 
-    holding = get_holding(
-        update.effective_user.id
-    )
+    coins = 0
+    holding = 0
 
-    value = (
-        holding *
-        data["price"]
-    )
+    if user:
+
+        user_name = user.first_name or "کاربر"
+
+        conn = None
+        cur = None
+
+        try:
+
+            conn = get_db()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT coins
+                FROM users
+                WHERE user_id = %s
+            """, (
+                user.id,
+            ))
+
+            row = cur.fetchone()
+
+            if row:
+                coins = row[0]
+
+            cur.execute("""
+                SELECT amount
+                FROM market_holdings
+                WHERE user_id = %s
+            """, (
+                user.id,
+            ))
+
+            row = cur.fetchone()
+
+            if row:
+                holding = row[0]
+
+            conn.rollback()
+
+        finally:
+
+            if cur:
+                cur.close()
+
+            release_db(conn)
 
     await update.message.reply_text(
-        f"📈 بورس AngryCoin\n\n"
-        f"🪙 سهم: {data['name']}\n"
-        f"💵 قیمت هر سهم: {data['price']:,.2f} 🪙\n\n"
-        f"📦 دارایی شما: {holding:g} سهم\n"
-        f"💰 ارزش دارایی: {value:,.2f} کوین\n\n"
-        f"🛒 خرید:\n"
-        f"/buy 1\n\n"
-        f"📉 فروش:\n"
-        f"/sell 1"
+        f"📈 بازار {name}\n\n"
+        f"🔹 نماد: {symbol}\n"
+        f"💵 قیمت هر سهم: {price} 🪙\n\n"
+        f"💰 موجودی: {coins} 🪙\n"
+        f"📦 سهام شما: {holding}\n\n"
+        f"خرید:\n"
+        f"/buy 2\n\n"
+        f"فروش:\n"
+        f"/sell 2"
     )
+
+
+# =========================================================
+# BUY
+# =========================================================
+
+async def buy(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.effective_chat:
+        return
+
+    if update.effective_chat.type in (
+        "group",
+        "supergroup"
+    ):
+
+        if not market_group_enabled(
+            update.effective_chat.id
+        ):
+
+            await update.message.reply_text(
+                "❌ بازار در این گروه فعال نیست."
+            )
+
+            return
+
+    if not update.effective_user:
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "مثال:\n/buy 5"
+        )
+
+        return
+
+    try:
+
+        amount = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ تعداد باید عدد باشد."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ تعداد باید بیشتر از صفر باشد."
+        )
+
+        return
+
+    user = update.effective_user
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        # Lock user
+        cur.execute("""
+            SELECT coins
+            FROM users
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (
+            user.id,
+        ))
+
+        user_row = cur.fetchone()
+
+        if not user_row:
+
+            cur.execute("""
+                INSERT INTO users (
+                    user_id,
+                    name,
+                    coins,
+                    last_message
+                )
+                VALUES (%s, %s, 0, 0)
+            """, (
+                user.id,
+                user.first_name or "کاربر"
+            ))
+
+            coins = 0
+
+        else:
+
+            coins = user_row[0]
+
+        # Lock price
+        cur.execute("""
+            SELECT price
+            FROM market
+            WHERE id = 1
+            FOR UPDATE
+        """)
+
+        market_row = cur.fetchone()
+
+        if not market_row:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                "❌ بازار وجود ندارد."
+            )
+
+            return
+
+        price = float(
+            market_row[0]
+        )
+
+        total = price * amount
+
+        if coins < total:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                f"❌ کوین کافی نداری.\n\n"
+                f"💵 قیمت: {total:.2f} 🪙\n"
+                f"💰 موجودی: {coins} 🪙"
+            )
+
+            return
+
+        # Deduct coins
+        cur.execute("""
+            UPDATE users
+            SET coins = coins - %s
+            WHERE user_id = %s
+        """, (
+            total,
+            user.id
+        ))
+
+        # Add holding
+        cur.execute("""
+            INSERT INTO market_holdings (
+                user_id,
+                amount
+            )
+            VALUES (
+                %s,
+                %s
+            )
+
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                amount =
+                    market_holdings.amount
+                    + EXCLUDED.amount
+        """, (
+            user.id,
+            amount
+        ))
+
+        conn.commit()
+
+        await update.message.reply_text(
+            f"✅ خرید انجام شد!\n\n"
+            f"📈 AngryCoin: {amount}\n"
+            f"💵 قیمت: {price:.2f}\n"
+            f"💰 هزینه: {total:.2f} 🪙"
+        )
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "BUY ERROR"
+        )
+
+        await update.message.reply_text(
+            "❌ خطا در خرید."
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# SELL
+# =========================================================
+
+async def sell(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.effective_chat:
+        return
+
+    if update.effective_chat.type in (
+        "group",
+        "supergroup"
+    ):
+
+        if not market_group_enabled(
+            update.effective_chat.id
+        ):
+
+            await update.message.reply_text(
+                "❌ بازار در این گروه فعال نیست."
+            )
+
+            return
+
+    if not update.effective_user:
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "مثال:\n/sell 5"
+        )
+
+        return
+
+    try:
+
+        amount = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ تعداد باید عدد باشد."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ تعداد باید بیشتر از صفر باشد."
+        )
+
+        return
+
+    user = update.effective_user
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT amount
+            FROM market_holdings
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (
+            user.id,
+        ))
+
+        holding = cur.fetchone()
+
+        if not holding:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                "❌ هیچ AngryCoinای نداری."
+            )
+
+            return
+
+        current_amount = float(
+            holding[0]
+        )
+
+        if current_amount < amount:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                f"❌ فقط {current_amount:g} سهم داری."
+            )
+
+            return
+
+        cur.execute("""
+            SELECT price
+            FROM market
+            WHERE id = 1
+            FOR UPDATE
+        """)
+
+        market_row = cur.fetchone()
+
+        if not market_row:
+
+            conn.rollback()
+
+            return
+
+        price = float(
+            market_row[0]
+        )
+
+        total = price * amount
+
+        # Remove shares
+        cur.execute("""
+            UPDATE market_holdings
+            SET amount = amount - %s
+            WHERE user_id = %s
+        """, (
+            amount,
+            user.id
+        ))
+
+        # Add coins
+        cur.execute("""
+            UPDATE users
+            SET coins = coins + %s
+            WHERE user_id = %s
+        """, (
+            total,
+            user.id
+        ))
+
+        conn.commit()
+
+        await update.message.reply_text(
+            f"✅ فروش انجام شد!\n\n"
+            f"📈 AngryCoin: {amount}\n"
+            f"💵 قیمت: {price:.2f}\n"
+            f"💰 دریافتی: {total:.2f} 🪙"
+        )
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "SELL ERROR"
+        )
+
+        await update.message.reply_text(
+            "❌ خطا در فروش."
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# PORTFOLIO
+# =========================================================
+
+async def portfolio(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    if not update.effective_user:
+        return
+
+    user = update.effective_user
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT coins
+            FROM users
+            WHERE user_id = %s
+        """, (
+            user.id,
+        ))
+
+        row = cur.fetchone()
+
+        coins = row[0] if row else 0
+
+        cur.execute("""
+            SELECT amount
+            FROM market_holdings
+            WHERE user_id = %s
+        """, (
+            user.id,
+        ))
+
+        row = cur.fetchone()
+
+        shares = (
+            float(row[0])
+            if row
+            else 0
+        )
+
+        cur.execute("""
+            SELECT price
+            FROM market
+            WHERE id = 1
+        """)
+
+        row = cur.fetchone()
+
+        price = (
+            float(row[0])
+            if row
+            else 0
+        )
+
+        value = shares * price
+
+        conn.rollback()
+
+        await update.message.reply_text(
+            f"📊 پرتفوی شما\n\n"
+            f"💰 کوین نقد: {coins} 🪙\n"
+            f"📈 AngryCoin: {shares:g}\n"
+            f"💵 ارزش سهام: {value:.2f} 🪙\n"
+            f"📦 ارزش کل تقریبی: "
+            f"{coins + value:.2f} 🪙"
+        )
+
+    except Exception:
+
+        logger.exception(
+            "PORTFOLIO ERROR"
+        )
+
+        await update.message.reply_text(
+            "❌ خطا."
+        )
+
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
 
 
 # =========================================================
@@ -2311,16 +3633,21 @@ async def setmarketgroup(
     if update.effective_user.id != ADMIN_ID:
         return
 
+    if not update.effective_chat:
+        return
+
     if not update.message:
         return
 
-    if update.message.chat.type not in (
+    chat = update.effective_chat
+
+    if chat.type not in (
         "group",
         "supergroup"
     ):
 
         await update.message.reply_text(
-            "❌ این دستور رو داخل گروه بزن."
+            "❌ این دستور باید داخل گروه باشد."
         )
 
         return
@@ -2334,19 +3661,30 @@ async def setmarketgroup(
         cur = conn.cursor()
 
         cur.execute("""
-            UPDATE angrycoin_market
-            SET group_id = %s,
-                updated_at = %s
-            WHERE id = 1
+            INSERT INTO market_groups (
+                chat_id,
+                title,
+                enabled
+            )
+            VALUES (
+                %s,
+                %s,
+                TRUE
+            )
+
+            ON CONFLICT (chat_id)
+            DO UPDATE SET
+                title = EXCLUDED.title,
+                enabled = TRUE
         """, (
-            update.message.chat.id,
-            time.time()
+            chat.id,
+            chat.title or "گروه"
         ))
 
         conn.commit()
 
         await update.message.reply_text(
-            "✅ بورس AngryCoin برای این گروه فعال شد."
+            "📈 بازار AngryCoin در این گروه فعال شد."
         )
 
     except Exception:
@@ -2358,8 +3696,66 @@ async def setmarketgroup(
             "SET MARKET GROUP ERROR"
         )
 
+    finally:
+
+        if cur:
+            cur.close()
+
+        release_db(conn)
+
+
+# =========================================================
+# UNSET MARKET GROUP
+# =========================================================
+
+async def unsetmarketgroup(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.effective_user:
+        return
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    if not update.effective_chat:
+        return
+
+    if not update.message:
+        return
+
+    chat = update.effective_chat
+
+    conn = None
+    cur = None
+
+    try:
+
+        conn = get_db()
+        cur = conn.cursor()
+
+        cur.execute("""
+            UPDATE market_groups
+            SET enabled = FALSE
+            WHERE chat_id = %s
+        """, (
+            chat.id,
+        ))
+
+        conn.commit()
+
         await update.message.reply_text(
-            "❌ خطا."
+            "📉 بازار AngryCoin در این گروه غیرفعال شد."
+        )
+
+    except Exception:
+
+        if conn:
+            conn.rollback()
+
+        logger.exception(
+            "UNSET MARKET GROUP ERROR"
         )
 
     finally:
@@ -2405,7 +3801,7 @@ async def setprice(
     except ValueError:
 
         await update.message.reply_text(
-            "❌ قیمت باید عدد باشد."
+            "❌ قیمت نامعتبر."
         )
 
         return
@@ -2426,34 +3822,38 @@ async def setprice(
         conn = get_db()
         cur = conn.cursor()
 
+        now = time.time()
+
         cur.execute("""
-            UPDATE angrycoin_market
-            SET price = %s,
+            UPDATE market
+            SET
+                price = %s,
                 updated_at = %s
             WHERE id = 1
         """, (
             price,
-            time.time()
+            now
         ))
 
         cur.execute("""
-            INSERT INTO angrycoin_history
-            (
+            INSERT INTO market_history (
                 price,
                 created_at
             )
-            VALUES
-            (%s, %s)
+            VALUES (
+                %s,
+                %s
+            )
         """, (
             price,
-            time.time()
+            now
         ))
 
         conn.commit()
 
         await update.message.reply_text(
-            f"✅ قیمت AngryCoin شد:\n\n"
-            f"🪙 {price:,.2f} کوین"
+            f"✅ قیمت AngryCoin تغییر کرد.\n\n"
+            f"💵 قیمت جدید: {price:g} 🪙"
         )
 
     except Exception:
@@ -2478,960 +3878,54 @@ async def setprice(
 
 
 # =========================================================
-# BUY ANGRYCOIN
-# =========================================================
-
-async def buy(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    if not update.effective_user:
-        return
-
-    if not update.effective_chat:
-        return
-
-    if not market_group_allowed(
-        update.effective_chat.id
-    ):
-
-        await update.message.reply_text(
-            "📈 بورس در این گروه فعال نیست."
-        )
-
-        return
-
-    if not context.args:
-
-        await update.message.reply_text(
-            "مثال:\n/buy 2"
-        )
-
-        return
-
-    try:
-
-        amount = float(
-            context.args[0]
-        )
-
-    except ValueError:
-
-        await update.message.reply_text(
-            "❌ مقدار نامعتبر."
-        )
-
-        return
-
-    if amount <= 0:
-
-        await update.message.reply_text(
-            "❌ مقدار باید بیشتر از صفر باشد."
-        )
-
-        return
-
-    user = update.effective_user
-    name = user.first_name or "کاربر"
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        # قفل کاربر
-        cur.execute("""
-            SELECT coins
-            FROM users
-            WHERE user_id = %s
-            FOR UPDATE
-        """, (
-            user.id,
-        ))
-
-        row = cur.fetchone()
-
-        coins = (
-            int(row[0])
-            if row
-            else 0
-        )
-
-        cur.execute("""
-            SELECT price
-            FROM angrycoin_market
-            WHERE id = 1
-        """)
-
-        market_row = cur.fetchone()
-
-        if not market_row:
-            raise Exception(
-                "Market not found"
-            )
-
-        price = float(
-            market_row[0]
-        )
-
-        cost = amount * price
-
-        if cost > coins:
-
-            await update.message.reply_text(
-                f"❌ موجودی کافی نیست.\n\n"
-                f"💰 هزینه: {cost:,.2f}\n"
-                f"🪙 موجودی: {coins:,}"
-            )
-
-            conn.rollback()
-            return
-
-        # کم کردن کوین
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES
-            (%s, %s, 0, 0)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name
-        """, (
-            user.id,
-            name
-        ))
-
-        cur.execute("""
-            UPDATE users
-            SET coins = coins - %s
-            WHERE user_id = %s
-        """, (
-            int(round(cost)),
-            user.id
-        ))
-
-        # اضافه کردن سهم
-        cur.execute("""
-            INSERT INTO angrycoin_holdings
-            (
-                user_id,
-                amount
-            )
-            VALUES
-            (%s, %s)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                amount =
-                    angrycoin_holdings.amount
-                    + EXCLUDED.amount
-        """, (
-            user.id,
-            amount
-        ))
-
-        conn.commit()
-
-        await update.message.reply_text(
-            f"✅ خرید انجام شد!\n\n"
-            f"🪙 AngryCoin: {amount:g} سهم\n"
-            f"💵 قیمت: {price:,.2f}\n"
-            f"💰 هزینه: {cost:,.2f} کوین"
-        )
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        logger.exception(
-            "BUY ERROR"
-        )
-
-        await update.message.reply_text(
-            "❌ خطا در خرید."
-        )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
-# SELL ANGRYCOIN
-# =========================================================
-
-async def sell(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    if not update.effective_user:
-        return
-
-    if not update.effective_chat:
-        return
-
-    if not market_group_allowed(
-        update.effective_chat.id
-    ):
-
-        await update.message.reply_text(
-            "📈 بورس در این گروه فعال نیست."
-        )
-
-        return
-
-    if not context.args:
-
-        await update.message.reply_text(
-            "مثال:\n/sell 2"
-        )
-
-        return
-
-    try:
-
-        amount = float(
-            context.args[0]
-        )
-
-    except ValueError:
-
-        await update.message.reply_text(
-            "❌ مقدار نامعتبر."
-        )
-
-        return
-
-    if amount <= 0:
-        return
-
-    user = update.effective_user
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT amount
-            FROM angrycoin_holdings
-            WHERE user_id = %s
-            FOR UPDATE
-        """, (
-            user.id,
-        ))
-
-        row = cur.fetchone()
-
-        owned = (
-            float(row[0])
-            if row
-            else 0
-        )
-
-        if amount > owned:
-
-            await update.message.reply_text(
-                f"❌ سهم کافی نداری.\n\n"
-                f"📦 دارایی: {owned:g}"
-            )
-
-            conn.rollback()
-            return
-
-        cur.execute("""
-            SELECT price
-            FROM angrycoin_market
-            WHERE id = 1
-        """)
-
-        price = float(
-            cur.fetchone()[0]
-        )
-
-        revenue = amount * price
-
-        cur.execute("""
-            UPDATE angrycoin_holdings
-            SET amount = amount - %s
-            WHERE user_id = %s
-        """, (
-            amount,
-            user.id
-        ))
-
-        cur.execute("""
-            UPDATE users
-            SET coins = coins + %s
-            WHERE user_id = %s
-        """, (
-            int(round(revenue)),
-            user.id
-        ))
-
-        conn.commit()
-
-        await update.message.reply_text(
-            f"✅ فروش انجام شد!\n\n"
-            f"📉 AngryCoin: {amount:g} سهم\n"
-            f"💵 قیمت: {price:,.2f}\n"
-            f"💰 دریافتی: {revenue:,.2f} کوین"
-        )
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        logger.exception(
-            "SELL ERROR"
-        )
-
-        await update.message.reply_text(
-            "❌ خطا در فروش."
-        )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
-# PORTFOLIO
-# =========================================================
-
-async def portfolio(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    if not update.message:
-        return
-
-    if not update.effective_user:
-        return
-
-    market_data = get_market()
-
-    if not market_data:
-        return
-
-    holding = get_holding(
-        update.effective_user.id
-    )
-
-    value = (
-        holding *
-        market_data["price"]
-    )
-
-    coins, _ = get_user(
-        update.effective_user.id,
-        update.effective_user.first_name or "کاربر"
-    )
-
-    await update.message.reply_text(
-        f"📦 پرتفوی شما\n\n"
-        f"🪙 AngryCoin: {holding:g} سهم\n"
-        f"💵 قیمت فعلی: {market_data['price']:,.2f}\n"
-        f"💰 ارزش سهام: {value:,.2f} کوین\n"
-        f"💳 پول نقد: {coins:,} کوین\n\n"
-        f"📊 ارزش کل: "
-        f"{coins + value:,.2f} کوین"
-    )
-
-
-# =========================================================
-# WEB APP GAME DATA
-# =========================================================
-
-async def web_app_data(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    message = update.effective_message
-
-    if not message:
-        return
-
-    if not message.web_app_data:
-        return
-
-    if not message.from_user:
-        return
-
-    user = message.from_user
-
-    try:
-
-        data = json.loads(
-            message.web_app_data.data
-        )
-
-    except Exception:
-
-        await message.reply_text(
-            "❌ اطلاعات بازی نامعتبر است."
-        )
-
-        return
-
-    if data.get("action") != "game_over":
-        return
-
-    try:
-
-        score = int(
-            data.get("score", 0)
-        )
-
-    except Exception:
-
-        await message.reply_text(
-            "❌ امتیاز نامعتبر است."
-        )
-
-        return
-
-    if score < 0 or score > 100000:
-
-        await message.reply_text(
-            "❌ امتیاز غیرمجاز است."
-        )
-
-        return
-
-    game_id = str(
-        data.get(
-            "game_id",
-            ""
-        )
-    ).strip()
-
-    if not game_id:
-
-        await message.reply_text(
-            "❌ شناسه بازی وجود ندارد."
-        )
-
-        return
-
-    coins_awarded = (
-        score *
-        COINS_PER_GAME_SCORE
-    )
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT 1
-            FROM game_results
-            WHERE game_id = %s
-        """, (
-            game_id,
-        ))
-
-        if cur.fetchone():
-
-            conn.rollback()
-
-            await message.reply_text(
-                "⚠️ این بازی قبلاً ثبت شده."
-            )
-
-            return
-
-        cur.execute("""
-            INSERT INTO game_results
-            (
-                game_id,
-                user_id,
-                score,
-                coins_awarded,
-                created_at
-            )
-            VALUES
-            (%s, %s, %s, %s, %s)
-        """, (
-            game_id,
-            user.id,
-            score,
-            coins_awarded,
-            time.time()
-        ))
-
-        cur.execute("""
-            INSERT INTO game_scores
-            (
-                user_id,
-                name,
-                score,
-                games_played,
-                best_score
-            )
-            VALUES
-            (%s, %s, %s, 1, %s)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                score = EXCLUDED.score,
-                games_played =
-                    game_scores.games_played + 1,
-                best_score =
-                    GREATEST(
-                        game_scores.best_score,
-                        EXCLUDED.best_score
-                    )
-        """, (
-            user.id,
-            user.first_name or "کاربر",
-            score,
-            score
-        ))
-
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES
-            (%s, %s, %s, 0)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                coins =
-                    users.coins
-                    + EXCLUDED.coins
-        """, (
-            user.id,
-            user.first_name or "کاربر",
-            coins_awarded
-        ))
-
-        conn.commit()
-
-        await message.reply_text(
-            f"🎮 بازی تموم شد!\n\n"
-            f"🏆 امتیاز: {score}\n"
-            f"🪙 جایزه: +{coins_awarded} کوین"
-        )
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        logger.exception(
-            "GAME DATA ERROR"
-        )
-
-        await message.reply_text(
-            "❌ خطا در ثبت بازی."
-        )
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
 # FLASK
 # =========================================================
 
 web = Flask(__name__)
 
 
-@web.get("/")
+@web.route("/")
 def home():
 
     return jsonify({
-        "ok": True,
-        "service": "telegram-bot",
-        "status": "running"
+        "status": "online",
+        "bot": "coin bot",
+        "market": "AngryCoin"
     })
 
 
-@web.get("/health")
+@web.route("/health")
 def health():
 
     return jsonify({
-        "ok": True,
-        "status": "healthy"
-    })
-
-
-@web.after_request
-def cors(response):
-
-    response.headers[
-        "Access-Control-Allow-Origin"
-    ] = "*"
-
-    response.headers[
-        "Access-Control-Allow-Headers"
-    ] = "Content-Type"
-
-    response.headers[
-        "Access-Control-Allow-Methods"
-    ] = "GET, POST, OPTIONS"
-
-    return response
-
-
-# =========================================================
-# GAME API
-# =========================================================
-
-@web.post("/game-score")
-def game_score_api():
-
-    data = request.get_json(
-        silent=True
-    ) or {}
-
-    try:
-
-        user_id = int(
-            data.get("user_id", 0)
-        )
-
-        score = int(
-            data.get("score", 0)
-        )
-
-    except Exception:
-
-        return jsonify({
-            "ok": False,
-            "error": "invalid data"
-        }), 400
-
-    if user_id <= 0:
-        return jsonify({
-            "ok": False,
-            "error": "invalid user"
-        }), 400
-
-    if score < 0 or score > 100000:
-        return jsonify({
-            "ok": False,
-            "error": "invalid score"
-        }), 400
-
-    name = str(
-        data.get(
-            "name",
-            "کاربر"
-        )
-    )[:100]
-
-    game_id = str(
-        data.get(
-            "game_id",
-            ""
-        )
-    ).strip()
-
-    if not game_id:
-
-        return jsonify({
-            "ok": False,
-            "error": "missing game_id"
-        }), 400
-
-    coins_awarded = (
-        score *
-        COINS_PER_GAME_SCORE
-    )
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT 1
-            FROM game_results
-            WHERE game_id = %s
-        """, (
-            game_id,
-        ))
-
-        if cur.fetchone():
-
-            conn.rollback()
-
-            return jsonify({
-                "ok": False,
-                "error": "game already registered"
-            }), 409
-
-        cur.execute("""
-            INSERT INTO game_results
-            (
-                game_id,
-                user_id,
-                score,
-                coins_awarded,
-                created_at
-            )
-            VALUES
-            (%s, %s, %s, %s, %s)
-        """, (
-            game_id,
-            user_id,
-            score,
-            coins_awarded,
-            time.time()
-        ))
-
-        cur.execute("""
-            INSERT INTO game_scores
-            (
-                user_id,
-                name,
-                score,
-                games_played,
-                best_score
-            )
-            VALUES
-            (%s, %s, %s, 1, %s)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                score = EXCLUDED.score,
-                games_played =
-                    game_scores.games_played + 1,
-                best_score =
-                    GREATEST(
-                        game_scores.best_score,
-                        EXCLUDED.best_score
-                    )
-        """, (
-            user_id,
-            name,
-            score,
-            score
-        ))
-
-        cur.execute("""
-            INSERT INTO users
-            (
-                user_id,
-                name,
-                coins,
-                last_message
-            )
-            VALUES
-            (%s, %s, %s, 0)
-
-            ON CONFLICT (user_id)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                coins =
-                    users.coins
-                    + EXCLUDED.coins
-        """, (
-            user_id,
-            name,
-            coins_awarded
-        ))
-
-        conn.commit()
-
-        return jsonify({
-            "ok": True,
-            "score": score,
-            "coins": coins_awarded
-        })
-
-    except Exception:
-
-        if conn:
-            conn.rollback()
-
-        logger.exception(
-            "GAME API ERROR"
-        )
-
-        return jsonify({
-            "ok": False,
-            "error": "database error"
-        }), 500
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-# =========================================================
-# MARKET API
-# =========================================================
-
-@web.get("/market")
-def market_api():
-
-    try:
-
-        data = get_market()
-
-        return jsonify({
-            "ok": True,
-            "market": data
-        })
-
-    except Exception:
-
-        logger.exception(
-            "MARKET API ERROR"
-        )
-
-        return jsonify({
-            "ok": False,
-            "error": "market error"
-        }), 500
-
-
-@web.get("/wallet/<int:user_id>")
-def wallet_api(user_id):
-
-    conn = None
-    cur = None
-
-    try:
-
-        conn = get_db()
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT coins
-            FROM users
-            WHERE user_id = %s
-        """, (
-            user_id,
-        ))
-
-        row = cur.fetchone()
-
-        return jsonify({
-            "ok": True,
-            "coins": (
-                int(row[0])
-                if row
-                else 0
-            )
-        })
-
-    finally:
-
-        if cur:
-            cur.close()
-
-        release_db(conn)
-
-
-@web.get("/portfolio/<int:user_id>")
-def portfolio_api(user_id):
-
-    market_data = get_market()
-
-    holding = get_holding(
-        user_id
-    )
-
-    value = (
-        holding *
-        market_data["price"]
-    )
-
-    return jsonify({
-        "ok": True,
-        "amount": holding,
-        "price": market_data["price"],
-        "value": value
+        "status": "ok"
     })
 
 
 # =========================================================
-# FLASK THREAD
+# FLASK SERVER
 # =========================================================
 
 def run_flask():
 
-    logger.info(
-        "Starting Flask on port %s",
-        PORT
-    )
-
     web.run(
         host="0.0.0.0",
         port=PORT,
-        debug=False,
-        use_reloader=False,
-        threaded=True
+        use_reloader=False
     )
 
 
 # =========================================================
-# TELEGRAM ERROR
+# ERROR HANDLER
 # =========================================================
 
-async def telegram_error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE
+async def error_handler(
+    update,
+    context
 ):
 
-    logger.error(
-        "Telegram update error:",
+    logger.exception(
+        "Telegram error:",
         exc_info=context.error
     )
 
@@ -3443,27 +3937,18 @@ async def telegram_error_handler(
 def main():
 
     logger.info(
-        "================================="
+        "Starting bot..."
     )
-
-    logger.info(
-        "Starting Telegram Bot..."
-    )
-
-    logger.info(
-        "================================="
-    )
-
-    # -------------------------
-    # DATABASE
-    # -------------------------
 
     create_db_pool()
+
     init_db()
 
-    # -------------------------
+    load_default_questions()
+
+    # -----------------------------------------
     # FLASK
-    # -------------------------
+    # -----------------------------------------
 
     flask_thread = Thread(
         target=run_flask,
@@ -3472,9 +3957,9 @@ def main():
 
     flask_thread.start()
 
-    # -------------------------
+    # -----------------------------------------
     # TELEGRAM
-    # -------------------------
+    # -----------------------------------------
 
     application = (
         Application.builder()
@@ -3482,9 +3967,9 @@ def main():
         .build()
     )
 
-    # =====================================================
-    # COMMANDS
-    # =====================================================
+    # -----------------------------------------
+    # BASIC
+    # -----------------------------------------
 
     application.add_handler(
         CommandHandler(
@@ -3507,26 +3992,9 @@ def main():
         )
     )
 
-    application.add_handler(
-        CommandHandler(
-            "gametop",
-            gametop
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "gamestats",
-            gamestats
-        )
-    )
-
-    application.add_handler(
-        CommandHandler(
-            "playerstats",
-            playerstats
-        )
-    )
+    # -----------------------------------------
+    # ADMIN
+    # -----------------------------------------
 
     application.add_handler(
         CommandHandler(
@@ -3544,15 +4012,15 @@ def main():
 
     application.add_handler(
         CommandHandler(
-            "say",
-            say
+            "playerstats",
+            playerstats
         )
     )
 
     application.add_handler(
         CommandHandler(
-            "setgroup",
-            setgroup
+            "say",
+            say
         )
     )
 
@@ -3563,9 +4031,16 @@ def main():
         )
     )
 
-    # =====================================================
+    application.add_handler(
+        CommandHandler(
+            "setgroup",
+            setgroup
+        )
+    )
+
+    # -----------------------------------------
     # QUIZ
-    # =====================================================
+    # -----------------------------------------
 
     application.add_handler(
         CommandHandler(
@@ -3588,21 +4063,59 @@ def main():
         )
     )
 
-    # =====================================================
-    # MARKET
-    # =====================================================
-
     application.add_handler(
         CommandHandler(
-            "market",
-            market
+            "addquestion",
+            addquestion
         )
     )
 
     application.add_handler(
         CommandHandler(
-            "portfolio",
-            portfolio
+            "questions",
+            questions
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "delquestion",
+            delquestion
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "enablequestion",
+            enablequestion
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "disablequestion",
+            disablequestion
+        )
+    )
+
+    # -----------------------------------------
+    # QUIZ ANSWERS
+    # -----------------------------------------
+
+    application.add_handler(
+        PollAnswerHandler(
+            quiz_answer
+        )
+    )
+
+    # -----------------------------------------
+    # MARKET
+    # -----------------------------------------
+
+    application.add_handler(
+        CommandHandler(
+            "market",
+            market
         )
     )
 
@@ -3622,8 +4135,8 @@ def main():
 
     application.add_handler(
         CommandHandler(
-            "setprice",
-            setprice
+            "portfolio",
+            portfolio
         )
     )
 
@@ -3634,135 +4147,46 @@ def main():
         )
     )
 
-    # =====================================================
-    # ADD QUESTION CONVERSATION
-    # =====================================================
-
-    add_question_conversation = (
-        ConversationHandler(
-            entry_points=[
-                CommandHandler(
-                    "addquestion",
-                    addquestion_start
-                )
-            ],
-
-            states={
-
-                ADD_Q_TEXT: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_text
-                    )
-                ],
-
-                ADD_Q_1: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_1
-                    )
-                ],
-
-                ADD_Q_2: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_2
-                    )
-                ],
-
-                ADD_Q_3: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_3
-                    )
-                ],
-
-                ADD_Q_4: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_4
-                    )
-                ],
-
-                ADD_Q_CORRECT: [
-                    MessageHandler(
-                        filters.TEXT
-                        & ~filters.COMMAND,
-                        addquestion_correct
-                    )
-                ],
-            },
-
-            fallbacks=[
-                CommandHandler(
-                    "cancel",
-                    addquestion_cancel
-                )
-            ],
+    application.add_handler(
+        CommandHandler(
+            "unsetmarketgroup",
+            unsetmarketgroup
         )
     )
 
     application.add_handler(
-        add_question_conversation
-    )
-
-    # =====================================================
-    # POLL ANSWER
-    # =====================================================
-
-    application.add_handler(
-        PollAnswerHandler(
-            quiz_answer
+        CommandHandler(
+            "setprice",
+            setprice
         )
     )
 
-    # =====================================================
-    # WEB APP
-    # =====================================================
-
-    application.add_handler(
-        MessageHandler(
-            filters.StatusUpdate.WEB_APP_DATA,
-            web_app_data
-        )
-    )
-
-    # =====================================================
-    # TEXT
-    # =====================================================
+    # -----------------------------------------
+    # COIN WORDS
+    # -----------------------------------------
 
     application.add_handler(
         MessageHandler(
             filters.TEXT
             & ~filters.COMMAND,
-            message_handler
+            coin_message_handler
         )
     )
 
-    # =====================================================
-    # ERROR HANDLER
-    # =====================================================
-
     application.add_error_handler(
-        telegram_error_handler
+        error_handler
     )
 
-    # =====================================================
-    # START
-    # =====================================================
+    # -----------------------------------------
+    # RUN
+    # -----------------------------------------
 
     logger.info(
-        "Bot is starting polling..."
+        "Bot is running..."
     )
 
     application.run_polling(
-        drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
+        drop_pending_updates=True
     )
 
 

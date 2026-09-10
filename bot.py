@@ -347,6 +347,11 @@ def ensure_user(user):
         conn.commit()
         cur.close()
 
+    except Exception:
+
+        conn.rollback()
+        raise
+
     finally:
 
         put_conn(conn)
@@ -415,6 +420,11 @@ def add_coins(user_id, amount):
         conn.commit()
         cur.close()
 
+    except Exception:
+
+        conn.rollback()
+        raise
+
     finally:
 
         put_conn(conn)
@@ -443,6 +453,11 @@ def remove_coins(user_id, amount):
         conn.commit()
         cur.close()
 
+    except Exception:
+
+        conn.rollback()
+        raise
+
     finally:
 
         put_conn(conn)
@@ -467,10 +482,75 @@ async def start(
         "🪙 ربات کوین فعاله.\n\n"
         "💰 /balance\n"
         "🏆 /top\n"
+        "💸 /pay 100 (با Reply)\n"
         "🧠 /quiz\n"
         "📈 /market\n"
-        "🎮 /gamestats"
+        "🎮 /gamestats\n"
+        "❓ /help"
     )
+
+
+# =========================================================
+# HELP
+# =========================================================
+
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    text = (
+        "📚 راهنمای ربات\n"
+        "━━━━━━━━━━━━━━\n\n"
+
+        "💰 بخش کوین:\n"
+        "/balance — موجودی\n"
+        "/top — جدول برترین‌ها\n"
+        "/pay 100 — انتقال کوین با Reply\n\n"
+
+        "🧠 بخش Quiz:\n"
+        "/quiz — سوال جدید\n"
+        "/quizscore — امتیاز شما\n"
+        "/quiztop — جدول Quiz\n\n"
+
+        "📈 بخش AngryCoin:\n"
+        "/market — قیمت بازار\n"
+        "/buy 10 — خرید سهم\n"
+        "/sell 10 — فروش سهم\n"
+        "/portfolio — پرتفوی\n\n"
+
+        "🎮 بخش Subway Bird:\n"
+        "/gamestats — آمار بازی\n"
+        "/gametop — جدول رکوردها\n\n"
+
+        "👑 دستورات ادمین:\n"
+        "/addcoins 100 — با Reply\n"
+        "/removecoins 100 — با Reply\n"
+        "/addall 100 — به همه\n"
+        "/playerstats — آمار کاربر\n"
+        "/say متن\n"
+        "/groupmsg متن\n"
+        "/setgroup\n\n"
+
+        "🧠 مدیریت Quiz:\n"
+        "/addquestion\n"
+        "/questions\n"
+        "/delquestion ID\n"
+        "/enablequestion ID\n"
+        "/disablequestion ID\n\n"
+
+        "📈 مدیریت بازار:\n"
+        "/setprice ANGRYCOIN 150\n"
+        "/setmarketgroup\n"
+        "/unsetmarketgroup\n\n"
+
+        "🐦 برای گرفتن کوین هم بنویس:\n"
+        "فولک\n"
+        "یا\n"
+        "هاپهاپ کوین"
+    )
+
+    await update.message.reply_text(text)
 
 
 # =========================================================
@@ -559,6 +639,13 @@ async def handle_message(
             )
 
         cur.close()
+
+    except Exception:
+
+        conn.rollback()
+        logger.exception(
+            "Message coin error"
+        )
 
     finally:
 
@@ -795,6 +882,283 @@ async def removecoins_command(
     await update.message.reply_text(
         f"✅ {amount} کوین از "
         f"{target.first_name} کم شد."
+    )
+
+
+# =========================================================
+# PAY / TRANSFER
+# =========================================================
+
+async def pay(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    sender = update.effective_user
+
+    if not sender:
+        return
+
+    # -----------------------------------------------------
+    # Must reply to recipient
+    # -----------------------------------------------------
+
+    if not update.message.reply_to_message:
+
+        await update.message.reply_text(
+            "❌ روی پیام کسی که می‌خوای براش کوین بفرستی Reply کن.\n\n"
+            "مثال:\n"
+            "/pay 100"
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # Amount
+    # -----------------------------------------------------
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "❌ مقدار کوین رو وارد کن.\n\n"
+            "مثال:\n"
+            "/pay 100"
+        )
+
+        return
+
+    try:
+
+        amount = int(
+            context.args[0]
+        )
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ مقدار باید عدد باشه."
+        )
+
+        return
+
+    if amount <= 0:
+
+        await update.message.reply_text(
+            "❌ مقدار باید بیشتر از صفر باشه."
+        )
+
+        return
+
+    # -----------------------------------------------------
+    # Recipient
+    # -----------------------------------------------------
+
+    target = (
+        update.message
+        .reply_to_message
+        .from_user
+    )
+
+    if not target:
+
+        await update.message.reply_text(
+            "❌ گیرنده پیدا نشد."
+        )
+
+        return
+
+    if target.id == sender.id:
+
+        await update.message.reply_text(
+            "😂 نمی‌تونی به خودت کوین بفرستی."
+        )
+
+        return
+
+    conn = get_conn()
+
+    try:
+
+        cur = conn.cursor()
+
+        # -------------------------------------------------
+        # Make sure both users exist
+        # -------------------------------------------------
+
+        cur.execute("""
+            INSERT INTO users (
+                user_id,
+                username,
+                first_name
+            )
+            VALUES (
+                %s,
+                %s,
+                %s
+            )
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name
+        """, (
+            sender.id,
+            sender.username,
+            sender.first_name
+        ))
+
+        cur.execute("""
+            INSERT INTO users (
+                user_id,
+                username,
+                first_name
+            )
+            VALUES (
+                %s,
+                %s,
+                %s
+            )
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                username = EXCLUDED.username,
+                first_name = EXCLUDED.first_name
+        """, (
+            target.id,
+            target.username,
+            target.first_name
+        ))
+
+        # -------------------------------------------------
+        # Lock sender row
+        # -------------------------------------------------
+
+        cur.execute("""
+            SELECT coins
+            FROM users
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (
+            sender.id,
+        ))
+
+        sender_row = cur.fetchone()
+
+        if not sender_row:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                "❌ حساب فرستنده پیدا نشد."
+            )
+
+            return
+
+        sender_balance = sender_row[0]
+
+        # -------------------------------------------------
+        # Check balance
+        # -------------------------------------------------
+
+        if sender_balance < amount:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                f"❌ موجودی کافی نیست.\n\n"
+                f"💰 موجودی شما: {sender_balance}\n"
+                f"🪙 مبلغ انتقال: {amount}"
+            )
+
+            return
+
+        # -------------------------------------------------
+        # Lock recipient row
+        # -------------------------------------------------
+
+        cur.execute("""
+            SELECT user_id
+            FROM users
+            WHERE user_id = %s
+            FOR UPDATE
+        """, (
+            target.id,
+        ))
+
+        target_row = cur.fetchone()
+
+        if not target_row:
+
+            conn.rollback()
+
+            await update.message.reply_text(
+                "❌ حساب گیرنده پیدا نشد."
+            )
+
+            return
+
+        # -------------------------------------------------
+        # Remove from sender
+        # total_coins DOES NOT change
+        # -------------------------------------------------
+
+        cur.execute("""
+            UPDATE users
+            SET coins = coins - %s
+            WHERE user_id = %s
+        """, (
+            amount,
+            sender.id
+        ))
+
+        # -------------------------------------------------
+        # Add to recipient
+        # total_coins DOES NOT change
+        # -------------------------------------------------
+
+        cur.execute("""
+            UPDATE users
+            SET coins = coins + %s
+            WHERE user_id = %s
+        """, (
+            amount,
+            target.id
+        ))
+
+        # -------------------------------------------------
+        # Commit transfer
+        # -------------------------------------------------
+
+        conn.commit()
+
+        cur.close()
+
+    except Exception:
+
+        conn.rollback()
+
+        logger.exception(
+            "Pay transfer error"
+        )
+
+        await update.message.reply_text(
+            "❌ انتقال انجام نشد. دوباره امتحان کن."
+        )
+
+        return
+
+    finally:
+
+        put_conn(conn)
+
+    # -----------------------------------------------------
+    # Success
+    # -----------------------------------------------------
+
+    await update.message.reply_text(
+        f"✅ انتقال با موفقیت انجام شد!\n\n"
+        f"👤 گیرنده: {target.first_name}\n"
+        f"🪙 مبلغ: {amount} کوین\n"
+        f"💰 موجودی جدید شما: "
+        f"{sender_balance - amount}"
     )
 
 
@@ -1118,6 +1482,11 @@ async def setgroup(
         conn.commit()
         cur.close()
 
+    except Exception:
+
+        conn.rollback()
+        raise
+
     finally:
 
         put_conn(conn)
@@ -1314,8 +1683,6 @@ async def quiz(
 
     except Exception:
 
-        # اگر ارسال سوال شکست خورد،
-        # cooldown را برمی‌گردانیم.
         conn = get_conn()
 
         try:
@@ -1434,7 +1801,6 @@ async def poll_answer(
             time.time()
         ))
 
-        # اگر قبلاً جواب داده، دوباره جایزه نده
         if cur.rowcount == 0:
 
             conn.commit()
@@ -2774,10 +3140,6 @@ def game_score():
                 new_total = score
                 new_games = 1
 
-            # =================================================
-            # GAME RESULT UPDATE
-            # =================================================
-
             cur.execute("""
                 INSERT INTO game_results (
                     user_id,
@@ -2806,10 +3168,6 @@ def game_score():
                 new_games
             ))
 
-            # =================================================
-            # SAVE GAME
-            # =================================================
-
             cur.execute("""
                 INSERT INTO game_scores (
                     user_id,
@@ -2837,10 +3195,6 @@ def game_score():
                 coins_awarded,
                 time.time()
             ))
-
-            # =================================================
-            # GIVE COINS
-            # =================================================
 
             cur.execute("""
                 INSERT INTO users (
@@ -3056,7 +3410,6 @@ def main():
 
     init_db()
 
-    # Flask
     Thread(
         target=run_flask,
         daemon=True
@@ -3069,13 +3422,7 @@ def main():
         .build()
     )
 
-    #
-application.add_handler(
-    CommandHandler(
-        "pay",
-        pay
-    )
-) =====================================================
+    # =====================================================
     # BASIC
     # =====================================================
 
@@ -3083,6 +3430,13 @@ application.add_handler(
         CommandHandler(
             "start",
             start
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "help",
+            help_command
         )
     )
 
@@ -3097,6 +3451,13 @@ application.add_handler(
         CommandHandler(
             "top",
             top
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "pay",
+            pay
         )
     )
 
@@ -3325,130 +3686,3 @@ application.add_handler(
 
 if __name__ == "__main__":
     main()
-# =========================================================
-# PAY / TRANSFER COINS
-# =========================================================
-
-async def pay(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    sender = update.effective_user
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ روی پیام کاربری که می‌خوای براش کوین بفرستی Reply کن.\n\n"
-            "مثال:\n"
-            "/pay 100"
-        )
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "❌ مقدار رو وارد کن.\n\n"
-            "مثال:\n"
-            "/pay 100"
-        )
-        return
-
-    try:
-        amount = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text(
-            "❌ مقدار باید عدد باشه."
-        )
-        return
-
-    if amount <= 0:
-        await update.message.reply_text(
-            "❌ مقدار باید بیشتر از صفر باشه."
-        )
-        return
-
-    target = update.message.reply_to_message.from_user
-
-    if target.id == sender.id:
-        await update.message.reply_text(
-            "😂 نمی‌تونی به خودت کوین بفرستی."
-        )
-        return
-
-    ensure_user(sender)
-    ensure_user(target)
-
-    conn = get_conn()
-
-    try:
-        cur = conn.cursor()
-
-        # قفل کردن موجودی فرستنده
-        cur.execute("""
-            SELECT coins
-            FROM users
-            WHERE user_id = %s
-            FOR UPDATE
-        """, (
-            sender.id,
-        ))
-
-        sender_row = cur.fetchone()
-
-        if not sender_row:
-            conn.rollback()
-            cur.close()
-
-            await update.message.reply_text(
-                "❌ حساب فرستنده پیدا نشد."
-            )
-            return
-
-        sender_balance = sender_row[0]
-
-        if sender_balance < amount:
-            conn.rollback()
-            cur.close()
-
-            await update.message.reply_text(
-                f"❌ موجودی کافی نیست.\n\n"
-                f"💰 موجودی شما: {sender_balance}\n"
-                f"🪙 مبلغ انتقال: {amount}"
-            )
-            return
-
-        # کم کردن از فرستنده
-        cur.execute("""
-            UPDATE users
-            SET coins = coins - %s
-            WHERE user_id = %s
-        """, (
-            amount,
-            sender.id
-        ))
-
-        # اضافه کردن به گیرنده
-        cur.execute("""
-            UPDATE users
-            SET coins = coins + %s
-            WHERE user_id = %s
-        """, (
-            amount,
-            target.id
-        ))
-
-        conn.commit()
-        cur.close()
-
-    except Exception:
-        conn.rollback()
-        raise
-
-    finally:
-        put_conn(conn)
-
-    await update.message.reply_text(
-        f"✅ انتقال با موفقیت انجام شد!\n\n"
-        f"👤 گیرنده: {target.first_name}\n"
-        f"🪙 مبلغ: {amount} کوین\n"
-        f"💰 موجودی جدید شما: {sender_balance - amount}"
-    )

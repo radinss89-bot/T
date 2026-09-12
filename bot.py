@@ -659,7 +659,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🐦 برای گرفتن کوین هم بنویس:\n"
         "فولک\n"
         "یا\n"
-        "جیک"
+        "هاپهاپ کوین"
     )
 
     await update.message.reply_text(text)
@@ -738,7 +738,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text or ""
 
-    if text.strip() not in ["فولک", "جیک کوین"]:
+    if text.strip() not in ["فولک", "هاپهاپ کوین"]:
         return
 
     now = time.time()
@@ -2507,6 +2507,37 @@ def run_flask():
 
 
 # =========================================================
+# SELF-PING (keeps Render's free instance from sleeping)
+# =========================================================
+# Render's free tier puts the service to sleep after ~15 minutes
+# with no inbound HTTP traffic. A Telegram message sent/deleted by
+# the bot doesn't count as HTTP traffic to the service, so it can't
+# prevent sleep. Instead, this background thread hits the service's
+# own /health endpoint every 2 minutes, which DOES count.
+#
+# Render sets RENDER_EXTERNAL_URL automatically for web services;
+# we fall back to localhost if it's not present (e.g. running
+# locally).
+
+def self_ping_loop():
+
+    import urllib.request
+
+    base_url = os.environ.get("RENDER_EXTERNAL_URL", f"http://127.0.0.1:{PORT}")
+    url = base_url.rstrip("/") + "/health"
+
+    while True:
+
+        time.sleep(120)  # 2 minutes
+
+        try:
+            urllib.request.urlopen(url, timeout=10)
+            logger.info("Self-ping OK (%s)", url)
+        except Exception as e:
+            logger.warning("Self-ping failed: %s", e)
+
+
+# =========================================================
 # MAIN
 # =========================================================
 
@@ -2515,6 +2546,7 @@ def main():
     init_db()
 
     Thread(target=run_flask, daemon=True).start()
+    Thread(target=self_ping_loop, daemon=True).start()
 
     application = Application.builder().token(TOKEN).build()
 

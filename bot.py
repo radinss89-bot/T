@@ -162,6 +162,75 @@ async def run_db(fn, *args, **kwargs):
 
 
 # =========================================================
+# SELF-HEALING SCHEMA MIGRATION
+# =========================================================
+# CHANGE: if a table already existed in the database (e.g. from
+# an earlier version of the bot) with a different/older shape,
+# CREATE TABLE IF NOT EXISTS silently does nothing and the old
+# shape stays broken. These helpers patch an *existing* table in
+# place — adding missing columns or constraints — WITHOUT ever
+# dropping or clearing data. Existing rows (old user coin
+# balances, etc.) are always preserved.
+
+def _add_column_if_missing(cur, table, column, definition):
+
+    cur.execute("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = %s AND column_name = %s
+    """, (table, column))
+
+    if cur.fetchone() is None:
+        cur.execute(f'ALTER TABLE {table} ADD COLUMN {column} {definition}')
+        logger.info("Migration: added column %s.%s", table, column)
+
+
+def _add_unique_if_missing(conn, cur, table, column):
+
+    cur.execute("""
+        SELECT 1
+        FROM pg_index i
+        JOIN pg_attribute a
+            ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = %s::regclass
+          AND i.indisunique
+          AND a.attname = %s
+    """, (table, column))
+
+    if cur.fetchone() is None:
+
+        try:
+            cur.execute(
+                f'ALTER TABLE {table} ADD CONSTRAINT {table}_{column}_key UNIQUE ({column})'
+            )
+            conn.commit()
+            logger.info("Migration: added unique constraint on %s.%s", table, column)
+        except Exception:
+            conn.rollback()
+            logger.warning(
+                "Migration: could not add unique constraint on %s.%s "
+                "(there may be duplicate values already in that column)",
+                table, column
+            )
+
+
+def _migrate_existing_tables(conn, cur):
+
+    # users — this is the table that was missing columns in your logs
+    _add_column_if_missing(cur, "users", "username", "TEXT")
+    _add_column_if_missing(cur, "users", "first_name", "TEXT")
+    _add_column_if_missing(cur, "users", "coins", "BIGINT DEFAULT 0")
+    _add_column_if_missing(cur, "users", "total_coins", "BIGINT DEFAULT 0")
+    _add_column_if_missing(cur, "users", "last_message", "DOUBLE PRECISION DEFAULT 0")
+    conn.commit()
+
+    # market — this is the table that was missing its UNIQUE/PK constraint
+    _add_column_if_missing(cur, "market", "name", "TEXT")
+    _add_column_if_missing(cur, "market", "price", "BIGINT DEFAULT 100")
+    conn.commit()
+    _add_unique_if_missing(conn, cur, "market", "symbol")
+
+
+# =========================================================
 # DB INIT
 # =========================================================
 
@@ -287,6 +356,12 @@ def init_db():
                 games_played INTEGER DEFAULT 0
             )
         """)
+
+        conn.commit()
+
+        # Patch up any pre-existing tables that were created by an
+        # older version of the bot with a different shape.
+        _migrate_existing_tables(conn, cur)
 
         cur.execute("""
             INSERT INTO market (symbol, name, price)

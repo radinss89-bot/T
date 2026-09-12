@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import asyncio
 import logging
@@ -284,26 +285,175 @@ def _drop_not_null_if_exists(conn, cur, table, column):
         )
 
 
+EXPECTED_SCHEMA = {
+    "users": {
+        "user_id": "BIGINT",
+        "username": "TEXT",
+        "first_name": "TEXT",
+        "coins": "BIGINT DEFAULT 0",
+        "total_coins": "BIGINT DEFAULT 0",
+        "last_message": "DOUBLE PRECISION DEFAULT 0",
+    },
+    "bot_groups": {
+        "chat_id": "BIGINT",
+        "title": "TEXT",
+    },
+    "quiz_questions": {
+        "id": None,  # serial, handled separately
+        "question": "TEXT",
+        "options": "TEXT[]",
+        "correct_index": "INTEGER",
+        "enabled": "BOOLEAN DEFAULT TRUE",
+    },
+    "quiz_polls": {
+        "poll_id": "TEXT",
+        "question_id": "INTEGER",
+        "correct_index": "INTEGER",
+    },
+    "quiz_answers": {
+        "poll_id": "TEXT",
+        "user_id": "BIGINT",
+        "answered_at": "DOUBLE PRECISION",
+    },
+    "quiz_cooldowns": {
+        "chat_id": "BIGINT",
+        "last_quiz": "DOUBLE PRECISION DEFAULT 0",
+    },
+    "quiz_user_stats": {
+        "user_id": "BIGINT",
+        "correct": "INTEGER DEFAULT 0",
+        "wrong": "INTEGER DEFAULT 0",
+        "total": "INTEGER DEFAULT 0",
+    },
+    "market": {
+        "symbol": "TEXT",
+        "name": "TEXT",
+        "price": "BIGINT DEFAULT 100",
+    },
+    "market_holdings": {
+        "user_id": "BIGINT",
+        "symbol": "TEXT",
+        "amount": "BIGINT DEFAULT 0",
+    },
+    "market_history": {
+        "id": None,
+        "symbol": "TEXT",
+        "price": "BIGINT",
+        "created_at": "DOUBLE PRECISION",
+    },
+    "market_groups": {
+        "chat_id": "BIGINT",
+    },
+    "game_scores": {
+        "id": None,
+        "user_id": "BIGINT",
+        "username": "TEXT",
+        "name": "TEXT",
+        "game_id": "TEXT",
+        "score": "INTEGER DEFAULT 0",
+        "coins_awarded": "INTEGER DEFAULT 0",
+        "created_at": "DOUBLE PRECISION",
+    },
+    "game_results": {
+        "user_id": "BIGINT",
+        "best_score": "INTEGER DEFAULT 0",
+        "total_score": "BIGINT DEFAULT 0",
+        "games_played": "INTEGER DEFAULT 0",
+    },
+}
+
+# The column each table is keyed/looked-up by in ON CONFLICT clauses —
+# must have a UNIQUE (or PRIMARY KEY) constraint for those to work.
+UNIQUE_KEYS = {
+    "users": "user_id",
+    "bot_groups": "chat_id",
+    "quiz_polls": "poll_id",
+    "quiz_cooldowns": "chat_id",
+    "quiz_user_stats": "user_id",
+    "market": "symbol",
+    "market_groups": "chat_id",
+    "game_results": "user_id",
+}
+
+
+def _relax_unexpected_not_null_columns(conn, cur, table, expected_columns):
+    """Safety net for any legacy column (from an older bot version)
+    that isn't part of the current schema and still has a hard NOT
+    NULL with no default — that would block every insert forever.
+    Only drops the constraint; never touches data.
+    """
+
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = %s AND is_nullable = 'NO' AND column_default IS NULL
+    """, (table,))
+
+    for (col,) in cur.fetchall():
+
+        if col in expected_columns:
+            continue
+
+        try:
+            cur.execute(f'ALTER TABLE {table} ALTER COLUMN {col} DROP NOT NULL')
+            conn.commit()
+            logger.info(
+                "Migration: relaxed NOT NULL on legacy column %s.%s", table, col
+            )
+        except Exception:
+            conn.rollback()
+
+
 def _migrate_existing_tables(conn, cur):
 
-    # users — this is the table that was missing columns in your logs
-    _add_column_if_missing(cur, "users", "username", "TEXT")
-    _add_column_if_missing(cur, "users", "first_name", "TEXT")
-    _add_column_if_missing(cur, "users", "coins", "BIGINT DEFAULT 0")
-    _add_column_if_missing(cur, "users", "total_coins", "BIGINT DEFAULT 0")
-    _add_column_if_missing(cur, "users", "last_message", "DOUBLE PRECISION DEFAULT 0")
-    conn.commit()
+    for table, columns in EXPECTED_SCHEMA.items():
 
-    # legacy columns from an older schema version that the current
-    # bot code doesn't write to — make sure they can't block inserts
-    _drop_not_null_if_exists(conn, cur, "users", "name")
+        for column, definition in columns.items():
 
-    # market — this is the table that was missing its UNIQUE/PK constraint
-    _add_column_if_missing(cur, "market", "name", "TEXT")
-    _add_column_if_missing(cur, "market", "price", "BIGINT DEFAULT 100")
-    conn.commit()
-    _add_unique_if_missing(conn, cur, "market", "symbol")
-    _ensure_serial_default(conn, cur, "market", "id")
+            if definition is None:
+                continue  # serial id columns — handled below
+
+            _add_column_if_missing(cur, table, column, definition)
+
+        conn.commit()
+
+        _relax_unexpected_not_null_columns(conn, cur, table, set(columns.keys()))
+
+        if "id" in columns:
+            _ensure_serial_default(conn, cur, table, "id")
+
+        if table in UNIQUE_KEYS:
+            _add_unique_if_missing(conn, cur, table, UNIQUE_KEYS[table])
+
+
+def _ensure_default_market_row():
+    """Guarantees the ANGRYCOIN market row exists. Safe to call any
+    time (buy/sell call this if a lookup unexpectedly comes back
+    empty) — never overwrites an existing price.
+    """
+
+    conn = get_conn()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute("""
+            INSERT INTO market (symbol, name, price)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (symbol) DO NOTHING
+        """, ("ANGRYCOIN", "AngryCoin", DEFAULT_ANGRYCOIN_PRICE))
+
+        conn.commit()
+        cur.close()
+
+    except Exception:
+
+        conn.rollback()
+        logger.exception("Could not ensure default market row")
+
+    finally:
+
+        put_conn(conn)
 
 
 # =========================================================
@@ -659,7 +809,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🐦 برای گرفتن کوین هم بنویس:\n"
         "فولک\n"
         "یا\n"
-        "هاپهاپ کوین"
+        "هاپهاپ کوین\n\n"
+        "📝 دستورات فارسی (بدون /):\n"
+        "موجودی، برترین، بورس، پرتفوی، "
+        "خرید 10، فروش 10، کوییز، راهنما"
     )
 
     await update.message.reply_text(text)
@@ -736,9 +889,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await run_db(ensure_user, user)
 
-    text = update.message.text or ""
+    text = (update.message.text or "").strip()
 
-    if text.strip() not in ["فولک", "هاپهاپ کوین"]:
+    # ---------------------------------------------------------
+    # Persian word commands (so people can just type the word
+    # instead of the English /command)
+    # ---------------------------------------------------------
+
+    NO_ARG_COMMANDS = {
+        "موجودی": balance,
+        "برترین": top,
+        "جدول": top,
+        "بورس": market,
+        "بازار": market,
+        "پرتفوی": portfolio,
+        "راهنما": help_command,
+        "کمک": help_command,
+        "کوییز": quiz,
+        "کویز": quiz,
+        "سوال": quiz,
+        "آمار بازی": gamestats,
+        "رکورد": gametop,
+    }
+
+    if text in NO_ARG_COMMANDS:
+        await NO_ARG_COMMANDS[text](update, context)
+        return
+
+    buy_sell_match = re.match(r"^(خرید|فروش)\s+(\d+)$", text)
+
+    if buy_sell_match:
+
+        action_word, amount_str = buy_sell_match.groups()
+        context.args = [amount_str]
+
+        if action_word == "خرید":
+            await buy(update, context)
+        else:
+            await sell(update, context)
+
+        return
+
+    if text not in ["فولک", "هاپهاپ کوین"]:
         return
 
     now = time.time()
@@ -1958,14 +2150,25 @@ async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
 
-    if len(context.args) < 2:
-        await update.message.reply_text("/setprice ANGRYCOIN 150")
+    if not context.args:
+        await update.message.reply_text(
+            "/setprice 150\n"
+            "یا برای چند سهمی:\n"
+            "/setprice ANGRYCOIN 150"
+        )
         return
 
-    symbol = context.args[0].upper()
+    # One argument -> price for the default ANGRYCOIN market.
+    # Two arguments -> symbol + price, for future multi-symbol use.
+    if len(context.args) == 1:
+        symbol = "ANGRYCOIN"
+        price_arg = context.args[0]
+    else:
+        symbol = context.args[0].upper()
+        price_arg = context.args[1]
 
     try:
-        price = int(context.args[1])
+        price = int(price_arg)
     except ValueError:
         await update.message.reply_text("❌ قیمت باید عدد باشد.")
         return
@@ -1973,6 +2176,8 @@ async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if price < 0:
         await update.message.reply_text("❌ قیمت نمی‌تواند منفی باشد.")
         return
+
+    await run_db(_ensure_default_market_row)
 
     ok = await run_db(_setprice_db, symbol, price)
 
@@ -1996,8 +2201,24 @@ def _buy_db(user_id, amount):
 
         cur = conn.cursor()
 
-        cur.execute("SELECT price FROM market WHERE symbol = 'ANGRYCOIN'")
+        cur.execute("SELECT price FROM market WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'")
         row = cur.fetchone()
+
+        if not row:
+
+            # Self-heal: the default market row is missing for some
+            # reason (fresh DB, wiped table, etc.) — create it and
+            # continue instead of failing the purchase.
+            cur.execute("""
+                INSERT INTO market (symbol, name, price)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (symbol) DO NOTHING
+            """, ("ANGRYCOIN", "AngryCoin", DEFAULT_ANGRYCOIN_PRICE))
+
+            conn.commit()
+
+            cur.execute("SELECT price FROM market WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'")
+            row = cur.fetchone()
 
         if not row:
             cur.close()
@@ -2080,8 +2301,21 @@ def _sell_db(user_id, amount):
 
         cur = conn.cursor()
 
-        cur.execute("SELECT price FROM market WHERE symbol = 'ANGRYCOIN'")
+        cur.execute("SELECT price FROM market WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'")
         price_row = cur.fetchone()
+
+        if not price_row:
+
+            cur.execute("""
+                INSERT INTO market (symbol, name, price)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (symbol) DO NOTHING
+            """, ("ANGRYCOIN", "AngryCoin", DEFAULT_ANGRYCOIN_PRICE))
+
+            conn.commit()
+
+            cur.execute("SELECT price FROM market WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'")
+            price_row = cur.fetchone()
 
         if not price_row:
             cur.close()

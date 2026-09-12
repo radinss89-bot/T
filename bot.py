@@ -738,7 +738,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text or ""
 
-    if text.strip() not in ["فولک", "هاپهاپ کوین"]:
+    if text.strip() not in ["فولک", "جیک کوین"]:
         return
 
     now = time.time()

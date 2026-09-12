@@ -659,7 +659,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🐦 برای گرفتن کوین هم بنویس:\n"
         "فولک\n"
         "یا\n"
-        "هاپهاپ کوین"
+        "جیک"
     )
 
     await update.message.reply_text(text)

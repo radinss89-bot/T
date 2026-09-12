@@ -213,6 +213,77 @@ def _add_unique_if_missing(conn, cur, table, column):
             )
 
 
+def _ensure_serial_default(conn, cur, table, column):
+    """If `column` exists but has no DEFAULT (so inserts that don't
+    mention it fail with NotNullViolation), give it an auto-increment
+    default backed by a sequence, continuing from the current max
+    value. Never touches existing rows.
+    """
+
+    cur.execute("""
+        SELECT column_default FROM information_schema.columns
+        WHERE table_name = %s AND column_name = %s
+    """, (table, column))
+
+    row = cur.fetchone()
+
+    if row is None:
+        return  # column doesn't exist on this table, nothing to do
+
+    if row[0] is not None:
+        return  # already has a default
+
+    seq_name = f"{table}_{column}_seq"
+
+    try:
+        cur.execute(f'CREATE SEQUENCE IF NOT EXISTS {seq_name}')
+        cur.execute(
+            f"SELECT setval('{seq_name}', COALESCE((SELECT MAX({column}) FROM {table}), 0) + 1, false)"
+        )
+        cur.execute(
+            f"ALTER TABLE {table} ALTER COLUMN {column} SET DEFAULT nextval('{seq_name}')"
+        )
+        conn.commit()
+        logger.info("Migration: added auto-increment default to %s.%s", table, column)
+    except Exception:
+        conn.rollback()
+        logger.warning(
+            "Migration: could not add auto-increment default to %s.%s",
+            table, column
+        )
+
+
+def _drop_not_null_if_exists(conn, cur, table, column):
+    """If a legacy column still has a NOT NULL constraint but the
+    current bot code never writes to it, drop just that constraint
+    so old rows/new inserts stop failing. The column and its data
+    (if any) are left in place — nothing is deleted.
+    """
+
+    cur.execute("""
+        SELECT is_nullable FROM information_schema.columns
+        WHERE table_name = %s AND column_name = %s
+    """, (table, column))
+
+    row = cur.fetchone()
+
+    if row is None:
+        return  # column doesn't exist on this table
+
+    if row[0] == "YES":
+        return  # already nullable
+
+    try:
+        cur.execute(f'ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL')
+        conn.commit()
+        logger.info("Migration: dropped NOT NULL on %s.%s (legacy column)", table, column)
+    except Exception:
+        conn.rollback()
+        logger.warning(
+            "Migration: could not drop NOT NULL on %s.%s", table, column
+        )
+
+
 def _migrate_existing_tables(conn, cur):
 
     # users — this is the table that was missing columns in your logs
@@ -223,11 +294,16 @@ def _migrate_existing_tables(conn, cur):
     _add_column_if_missing(cur, "users", "last_message", "DOUBLE PRECISION DEFAULT 0")
     conn.commit()
 
+    # legacy columns from an older schema version that the current
+    # bot code doesn't write to — make sure they can't block inserts
+    _drop_not_null_if_exists(conn, cur, "users", "name")
+
     # market — this is the table that was missing its UNIQUE/PK constraint
     _add_column_if_missing(cur, "market", "name", "TEXT")
     _add_column_if_missing(cur, "market", "price", "BIGINT DEFAULT 100")
     conn.commit()
     _add_unique_if_missing(conn, cur, "market", "symbol")
+    _ensure_serial_default(conn, cur, "market", "id")
 
 
 # =========================================================

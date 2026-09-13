@@ -10,7 +10,7 @@ import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 from flask import Flask, request, jsonify
 
-from telegram import Update, Poll
+from telegram import Update, Poll, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -42,6 +42,10 @@ DEFAULT_ANGRYCOIN_PRICE = 100
 
 GAME_COIN_MULTIPLIER = 5
 
+# The mini-game's own URL (hosted as a separate Render service).
+# Can be overridden with a GAME_URL env var without touching code.
+GAME_URL = os.environ.get("GAME_URL", "https://t-pk89.onrender.com")
+
 
 # =========================================================
 # LOGGING
@@ -60,6 +64,24 @@ logger = logging.getLogger(__name__)
 # =========================================================
 
 web = Flask(__name__)
+
+
+@web.after_request
+def add_cors_headers(response):
+    # The mini-game HTML is loaded inside Telegram's in-app browser,
+    # which treats it as a different origin than this Flask server.
+    # Without these headers, the browser silently blocks the
+    # game's fetch() to /game-score — no error shown to the player,
+    # coins just never arrive. This allows it from anywhere.
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@web.route("/game-score", methods=["OPTIONS"])
+def game_score_preflight():
+    return ("", 204)
 
 
 @web.route("/")
@@ -801,6 +823,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💸 /pay 100 (با Reply)\n"
         "🧠 /quiz\n"
         "📈 /market\n"
+        "🎮 /play\n"
         "🎮 /gamestats\n"
         "❓ /help"
     )
@@ -829,6 +852,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/sell 10 — فروش سهم\n"
         "/portfolio — پرتفوی\n\n"
         "🎮 بخش Subway Bird:\n"
+        "/play — شروع بازی\n"
         "/gamestats — آمار بازی\n"
         "/gametop — جدول رکوردها\n\n"
         "👑 دستورات ادمین:\n"
@@ -953,6 +977,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "سوال": quiz,
         "آمار بازی": gamestats,
         "رکورد": gametop,
+        "بازی": play,
+        "بازی کن": play,
     }
 
     if text in NO_ARG_COMMANDS:
@@ -2766,6 +2792,20 @@ def _gamestats_db(user_id):
         put_conn(conn)
 
 
+async def play(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🎮 بازی کن (Subway Bird)", web_app=WebAppInfo(url=GAME_URL))]
+    ])
+
+    await update.message.reply_text(
+        "برای بازی و گرفتن کوین، روی دکمه زیر بزن 👇\n\n"
+        "⚠️ حتماً از همین دکمه باز کن (نه لینک مستقیم)، "
+        "وگرنه کوینی که می‌گیری به حسابت اضافه نمی‌شه.",
+        reply_markup=keyboard
+    )
+
+
 async def gamestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = update.effective_user
@@ -2942,6 +2982,7 @@ def main():
     application.add_handler(CommandHandler("setprice", setprice))
 
     # GAME
+    application.add_handler(CommandHandler("play", play))
     application.add_handler(CommandHandler("gamestats", gamestats))
     application.add_handler(CommandHandler("gametop", gametop))
 

@@ -592,7 +592,16 @@ body{
 .gameover-reward{
     font-size:16px;
     opacity:.8;
-    margin-bottom:20px;
+    margin-bottom:10px;
+}
+
+/* NEW: visible status of the score submission, so problems show up
+   on screen instead of only in a console nobody on mobile can see */
+.gameover-status{
+    font-size:13px;
+    min-height:18px;
+    margin-bottom:14px;
+    opacity:.9;
 }
 
 #restart{
@@ -795,6 +804,8 @@ body{
                 🪙 جایزه: <b id="reward">0</b> کوین
             </div>
 
+            <div class="gameover-status" id="scoreStatus"></div>
+
             <button id="restart">
                 🔄 دوباره بازی کن
             </button>
@@ -842,6 +853,7 @@ const bestEl = document.getElementById("best");
 const gameOverEl = document.getElementById("gameOver");
 const finalScoreEl = document.getElementById("finalScore");
 const rewardEl = document.getElementById("reward");
+const scoreStatusEl = document.getElementById("scoreStatus");
 
 const leftBtn = document.getElementById("leftBtn");
 const rightBtn = document.getElementById("rightBtn");
@@ -1313,6 +1325,8 @@ function startGame(){
     gameOverEl.style.display =
         "none";
 
+    scoreStatusEl.textContent = "";
+
     flash.classList.remove("flash");
 
     updatePlayer();
@@ -1355,6 +1369,9 @@ async function endGame(){
     gameOverEl.style.display =
         "flex";
 
+    scoreStatusEl.textContent =
+        "⏳ در حال ارسال امتیاز...";
+
     await sendScore(score);
 }
 
@@ -1383,9 +1400,14 @@ async function sendScore(score){
 
         if(!userId){
 
-            console.log(
-                "Telegram user not found"
-            );
+            // THIS is the case that used to fail silently.
+            // Now it shows up directly on screen.
+            scoreStatusEl.textContent =
+                "⚠️ کاربر تلگرام شناسایی نشد — این بازی رو باید " +
+                "از داخل خود تلگرام (دکمه منو یا /play) باز کنی، " +
+                "نه از یه لینک مستقیم تو مرورگر.";
+
+            console.log("Telegram user not found");
 
             return;
         }
@@ -1418,7 +1440,24 @@ async function sendScore(score){
             data
         );
 
+        if(response.ok && data.ok){
+
+            scoreStatusEl.textContent =
+                `✅ ${data.coins_awarded} کوین به حسابت اضافه شد ` +
+                `(ID: ${userId})`;
+
+        }else{
+
+            scoreStatusEl.textContent =
+                `❌ سرور خطا داد: ${data.error || response.status} ` +
+                `(ID: ${userId})`;
+        }
+
     }catch(error){
+
+        scoreStatusEl.textContent =
+            "❌ اتصال به سرور برقرار نشد (شبکه یا CORS). " +
+            "جزئیات تو Console مرورگر.";
 
         console.error(
             "Score sending error:",

@@ -1,5 +1,6 @@
 import os
 import re
+import html
 import time
 import asyncio
 import logging
@@ -403,6 +404,44 @@ def _relax_unexpected_not_null_columns(conn, cur, table, expected_columns):
             conn.rollback()
 
 
+def _add_composite_unique_if_missing(conn, cur, table, columns):
+    """Same idea as _add_unique_if_missing but for a multi-column
+    (composite) unique constraint, e.g. market_holdings(user_id, symbol),
+    which is what ON CONFLICT (col_a, col_b) needs to be able to match.
+    Just attempts to add it and quietly ignores failure if a matching
+    constraint already exists (or if duplicate rows block it).
+    """
+
+    col_list = ", ".join(columns)
+    constraint_name = f"{table}_{'_'.join(columns)}_key"
+
+    try:
+        cur.execute(f"""
+            SELECT 1 FROM pg_constraint
+            WHERE conname = %s AND conrelid = %s::regclass
+        """, (constraint_name, table))
+
+        if cur.fetchone() is not None:
+            return  # we already added this one on a previous run
+
+        cur.execute(
+            f'ALTER TABLE {table} ADD CONSTRAINT {constraint_name} UNIQUE ({col_list})'
+        )
+        conn.commit()
+        logger.info(
+            "Migration: added composite unique constraint on %s(%s)",
+            table, col_list
+        )
+    except Exception:
+        conn.rollback()
+        logger.warning(
+            "Migration: could not add composite unique constraint on %s(%s) "
+            "(it may already exist under a different name, or there may be "
+            "duplicate rows already)",
+            table, col_list
+        )
+
+
 def _migrate_existing_tables(conn, cur):
 
     for table, columns in EXPECTED_SCHEMA.items():
@@ -423,6 +462,10 @@ def _migrate_existing_tables(conn, cur):
 
         if table in UNIQUE_KEYS:
             _add_unique_if_missing(conn, cur, table, UNIQUE_KEYS[table])
+
+    # composite (multi-column) unique keys, for ON CONFLICT (a, b) clauses
+    _add_composite_unique_if_missing(conn, cur, "market_holdings", ["user_id", "symbol"])
+    _add_composite_unique_if_missing(conn, cur, "quiz_answers", ["poll_id", "user_id"])
 
 
 def _ensure_default_market_row():
@@ -789,8 +832,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/gamestats — آمار بازی\n"
         "/gametop — جدول رکوردها\n\n"
         "👑 دستورات ادمین:\n"
-        "/addcoins 100 — با Reply\n"
-        "/removecoins 100 — با Reply\n"
+        "/addcoins 100 — با Reply یا @username\n"
+        "/removecoins 100 — با Reply یا @username\n"
         "/addall 100 — به همه\n"
         "/playerstats — آمار کاربر\n"
         "/say متن\n"
@@ -985,7 +1028,7 @@ def _top_db():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT first_name, username, coins
+            SELECT user_id, first_name, username, coins
             FROM users
             ORDER BY coins DESC
             LIMIT 10
@@ -1012,11 +1055,14 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "🏆 TOP 10\n\n"
 
     for i, row in enumerate(rows, 1):
-        name = row[0] or row[1] or "Unknown"
-        coins = row[2]
-        text += f"{i}. {name} — 🪙 {coins}\n"
+        user_id, first_name, username, coins = row
+        name = html.escape(first_name or username or "Unknown")
+        text += (
+            f'{i}. <a href="tg://user?id={user_id}">{name}</a> '
+            f'(ID: <code>{user_id}</code>) — 🪙 {coins}\n'
+        )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 # =========================================================
@@ -1031,38 +1077,120 @@ def is_admin(user_id):
 # ADD / REMOVE COINS
 # =========================================================
 
+class _DBUser:
+    """Minimal stand-in for a telegram.User, built from a DB lookup
+    by username instead of from a Telegram Update object. Has the
+    same .id/.username/.first_name attributes the rest of the code
+    expects.
+    """
+
+    def __init__(self, id, username, first_name):
+        self.id = id
+        self.username = username
+        self.first_name = first_name
+
+
+def _find_user_by_username_db(username):
+
+    conn = get_conn()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT user_id, username, first_name
+            FROM users
+            WHERE LOWER(username) = LOWER(%s)
+            LIMIT 1
+        """, (username,))
+
+        row = cur.fetchone()
+        cur.close()
+
+        if row:
+            return _DBUser(row[0], row[1], row[2])
+
+        return None
+
+    finally:
+
+        put_conn(conn)
+
+
+async def _resolve_target_and_amount(update, context):
+    """Shared by /addcoins and /removecoins: the target user can be
+    given either by replying to their message, or by tagging them
+    with @username in the command (e.g. /removecoins 100 @folan).
+    Returns (target, amount), or (None, None) after already sending
+    the person an explanation of what went wrong.
+    """
+
+    if update.message.reply_to_message:
+
+        target = update.message.reply_to_message.from_user
+        amount_arg = context.args[0] if context.args else None
+
+    else:
+
+        username_token = None
+        amount_arg = None
+
+        for token in context.args:
+
+            if token.startswith("@"):
+                username_token = token[1:]
+            else:
+                amount_arg = token
+
+        if not username_token:
+            await update.message.reply_text(
+                "❌ یا روی پیام کاربر Reply کن، یا با @username تگش کن.\n\n"
+                "مثال:\n/removecoins 100 @username"
+            )
+            return None, None
+
+        target = await run_db(_find_user_by_username_db, username_token)
+
+        if not target:
+            await update.message.reply_text(
+                "❌ کاربری با این username پیدا نشد "
+                "(باید حداقل یه‌بار با ربات پیام داده باشه)."
+            )
+            return None, None
+
+    if not amount_arg:
+        await update.message.reply_text("❌ مقدار کوین رو وارد کن.")
+        return None, None
+
+    try:
+        amount = int(amount_arg)
+    except ValueError:
+        await update.message.reply_text("❌ مقدار باید عدد باشه.")
+        return None, None
+
+    if amount <= 0:
+        await update.message.reply_text("❌ مقدار باید بیشتر از صفر باشه.")
+        return None, None
+
+    return target, amount
+
+
 async def addcoins_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_admin(update.effective_user.id):
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "❌ روی پیام کاربر Reply کن:\n/addcoins 100"
-        )
-        return
+    target, amount = await _resolve_target_and_amount(update, context)
 
-    if not context.args:
-        await update.message.reply_text("❌ مقدار کوین رو وارد کن.")
+    if target is None:
         return
-
-    try:
-        amount = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ مقدار باید عدد باشه.")
-        return
-
-    if amount <= 0:
-        await update.message.reply_text("❌ مقدار باید بیشتر از صفر باشه.")
-        return
-
-    target = update.message.reply_to_message.from_user
 
     await run_db(ensure_user, target)
     await run_db(add_coins, target.id, amount)
 
     await update.message.reply_text(
-        f"✅ {amount} کوین به {target.first_name} اضافه شد."
+        f"✅ {amount} کوین به {target.first_name or target.username} اضافه شد."
     )
 
 
@@ -1071,31 +1199,16 @@ async def removecoins_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not is_admin(update.effective_user.id):
         return
 
-    if not update.message.reply_to_message:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
+    target, amount = await _resolve_target_and_amount(update, context)
 
-    if not context.args:
-        await update.message.reply_text("❌ مقدار کوین رو وارد کن.")
+    if target is None:
         return
-
-    try:
-        amount = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("❌ مقدار باید عدد باشه.")
-        return
-
-    if amount <= 0:
-        await update.message.reply_text("❌ مقدار باید بیشتر از صفر باشه.")
-        return
-
-    target = update.message.reply_to_message.from_user
 
     await run_db(ensure_user, target)
     await run_db(remove_coins, target.id, amount)
 
     await update.message.reply_text(
-        f"✅ {amount} کوین از {target.first_name} کم شد."
+        f"✅ {amount} کوین از {target.first_name or target.username} کم شد."
     )
 
 
@@ -1799,7 +1912,7 @@ def _quiztop_db():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT u.first_name, u.username, q.correct, q.total
+            SELECT q.user_id, u.first_name, u.username, q.correct, q.total
             FROM quiz_user_stats q
             LEFT JOIN users u ON u.user_id = q.user_id
             ORDER BY q.correct DESC
@@ -1827,10 +1940,14 @@ async def quiztop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "🏆 Quiz TOP\n\n"
 
     for i, row in enumerate(rows, 1):
-        name = row[0] or row[1] or "Unknown"
-        text += f"{i}. {name} — ✅ {row[2]} / {row[3]}\n"
+        user_id, first_name, username, correct, total = row
+        name = html.escape(first_name or username or "Unknown")
+        text += (
+            f'{i}. <a href="tg://user?id={user_id}">{name}</a> '
+            f'(ID: <code>{user_id}</code>) — ✅ {correct} / {total}\n'
+        )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 # =========================================================
@@ -2682,7 +2799,7 @@ def _gametop_db():
         cur = conn.cursor()
 
         cur.execute("""
-            SELECT u.first_name, u.username, g.best_score
+            SELECT g.user_id, u.first_name, u.username, g.best_score
             FROM game_results g
             LEFT JOIN users u ON u.user_id = g.user_id
             ORDER BY g.best_score DESC
@@ -2710,10 +2827,14 @@ async def gametop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "🏆 Subway Bird TOP\n\n"
 
     for i, row in enumerate(rows, 1):
-        name = row[0] or row[1] or "Unknown"
-        text += f"{i}. {name} — 🏆 {row[2]}\n"
+        user_id, first_name, username, best_score = row
+        name = html.escape(first_name or username or "Unknown")
+        text += (
+            f'{i}. <a href="tg://user?id={user_id}">{name}</a> '
+            f'(ID: <code>{user_id}</code>) — 🏆 {best_score}\n'
+        )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(text, parse_mode="HTML")
 
 
 # =========================================================

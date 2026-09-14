@@ -195,6 +195,29 @@ body{
    TAP GAME
 ========================================================= */
 
+#tap-petLevel{
+    font-size:15px;
+    font-weight:bold;
+    margin-bottom:10px;
+    opacity:.85;
+}
+
+#tap-petProgress{
+    width:min(60vw,240px);
+    height:8px;
+    border-radius:99px;
+    background:rgba(255,255,255,.1);
+    overflow:hidden;
+    margin-bottom:22px;
+}
+
+#tap-petProgressBar{
+    height:100%;
+    width:0%;
+    background:linear-gradient(90deg,#ff8a8a,#ffd23f);
+    transition:width .4s ease;
+}
+
 #tap-coinCount{
     font-size:44px;
     font-weight:900;
@@ -214,6 +237,7 @@ body{
     position:relative;
     width:min(60vw,240px);
     height:min(60vw,240px);
+    transition:width .35s ease,height .35s ease;
 }
 
 #tap-btn{
@@ -221,27 +245,34 @@ body{
     height:100%;
     border-radius:50%;
     border:none;
+    overflow:visible;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:8px;
 
     background:
-        radial-gradient(circle at 32% 25%,#ff8a8a 0 8%,#f33 25%,#c40000 75%,#7a0000 100%);
+        radial-gradient(circle at 50% 85%, rgba(0,0,0,.4) 0%, transparent 62%);
 
-    box-shadow:
-        0 18px 40px rgba(255,30,30,.35),
-        inset -10px -12px 20px rgba(0,0,0,.3),
-        inset 8px 6px 16px rgba(255,255,255,.25);
-
-    font-size:60px;
     transition:transform .08s ease;
+}
+
+#tap-btn svg{
+    width:100%;
+    height:100%;
+    filter:drop-shadow(0 14px 18px rgba(0,0,0,.4));
 }
 
 #tap-btn:active{ transform:scale(.93); }
 
-#tap-zone.pulse #tap-btn{ animation:tapPulse .5s ease; }
+#tap-zone.pulse #tap-btn{ animation:tapPulse .45s ease; }
 
 @keyframes tapPulse{
-    0%{box-shadow:0 18px 40px rgba(255,30,30,.35),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.25);}
-    50%{box-shadow:0 18px 55px rgba(255,80,80,.6),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.35);}
-    100%{box-shadow:0 18px 40px rgba(255,30,30,.35),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.25);}
+    0%{ transform:scale(1); }
+    40%{ transform:scale(1.1) rotate(-3deg); }
+    70%{ transform:scale(.97) rotate(2deg); }
+    100%{ transform:scale(1); }
 }
 
 .floatup{
@@ -315,6 +346,136 @@ body{
 }
 
 #reaction-startBtn:active{ transform:scale(.95); }
+
+/* =========================================================
+   PIG HUNTER (shooter)
+========================================================= */
+
+#shoot-arena{
+    position:relative;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:
+        radial-gradient(circle at 30% 15%,rgba(255,255,255,.06) 0 2px,transparent 3px),
+        radial-gradient(circle at 70% 25%,rgba(255,255,255,.05) 0 1px,transparent 2px),
+        linear-gradient(to bottom,#1c3d2e 0%,#245939 45%,#2f7a49 100%);
+}
+
+#shoot-hud{
+    position:absolute;
+    z-index:20;
+    top:10px;
+    left:12px;
+    right:12px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+}
+
+.shoot-pig{
+    position:absolute;
+    border-radius:50%;
+    z-index:5;
+
+    background:
+        radial-gradient(circle at 35% 28%,#c9f2a0 0 10%,#8fd85a 28%,#5aa832 70%,#3d7a20 100%);
+
+    box-shadow:
+        0 10px 18px rgba(0,0,0,.4),
+        inset -6px -8px 14px rgba(0,0,0,.25),
+        inset 5px 5px 10px rgba(255,255,255,.3);
+
+    animation:pigPopIn .18s ease;
+}
+
+.shoot-pig.hit{
+    animation:pigPopOut .18s ease forwards;
+}
+
+@keyframes pigPopIn{
+    from{ transform:scale(.3); opacity:0; }
+    to{ transform:scale(1); opacity:1; }
+}
+
+@keyframes pigPopOut{
+    from{ transform:scale(1); opacity:1; }
+    to{ transform:scale(1.3); opacity:0; }
+}
+
+.shoot-snout{
+    position:absolute;
+    left:50%;
+    top:55%;
+    transform:translate(-50%,-50%);
+    width:44%;
+    height:32%;
+    border-radius:50%;
+    background:#e694a8;
+    box-shadow:inset 0 2px 4px rgba(0,0,0,.2);
+}
+
+.shoot-snout::before,
+.shoot-snout::after{
+    content:"";
+    position:absolute;
+    top:35%;
+    width:18%;
+    height:35%;
+    border-radius:50%;
+    background:#a85570;
+}
+
+.shoot-snout::before{ left:20%; }
+.shoot-snout::after{ right:20%; }
+
+.shoot-overlay{
+    position:absolute;
+    z-index:100;
+    inset:0;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    gap:10px;
+    text-align:center;
+    padding:20px;
+    background:rgba(4,6,10,.72);
+    backdrop-filter:blur(9px);
+}
+
+.shoot-overlay.visible{ display:flex; }
+
+.shoot-title{
+    font-size:26px;
+    font-weight:900;
+}
+
+.shoot-desc{
+    font-size:13px;
+    opacity:.7;
+    margin-bottom:8px;
+}
+
+#shoot-status{
+    font-size:13px;
+    min-height:18px;
+    opacity:.9;
+}
+
+.shoot-btn{
+    margin-top:10px;
+    border:none;
+    padding:13px 32px;
+    border-radius:15px;
+    background:#e31b23;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
+    box-shadow:0 7px 18px rgba(0,0,0,.35);
+}
+
+.shoot-btn:active{ transform:scale(.95); }
 
 /* =========================================================
    SUBWAY BIRD (kept close to the original standalone build)
@@ -538,6 +699,15 @@ body{
             <div class="arrow">‹</div>
         </div>
 
+        <div class="gameCard" data-game="shooter">
+            <div class="emoji">🐷</div>
+            <div class="info">
+                <div class="title">شکار خوک‌ها</div>
+                <div class="desc">۳۰ ثانیه، هر خوک یه کوین</div>
+            </div>
+            <div class="arrow">‹</div>
+        </div>
+
         <div class="gameCard comingSoonCard">
             <div class="emoji">👥</div>
             <div class="info">
@@ -551,6 +721,8 @@ body{
     <!-- ============ TAP GAME ============ -->
     <div class="screen" id="screen-tap">
         <div class="gameScreenBody">
+            <div id="tap-petLevel">🐣 جوجه</div>
+            <div id="tap-petProgress"><div id="tap-petProgressBar"></div></div>
             <div id="tap-coinCount">🪙 <span id="tap-sessionCoins">0</span></div>
             <div id="tap-coinLabel">سکه‌ی این نشست</div>
             <div id="tap-zone">
@@ -568,6 +740,39 @@ body{
             <div id="reaction-result"></div>
             <div id="reaction-best">بهترین زمانت: --</div>
             <button id="reaction-startBtn">▶ شروع</button>
+        </div>
+    </div>
+
+    <!-- ============ PIG HUNTER (shooter) ============ -->
+    <div class="screen" id="screen-shooter">
+        <div class="gameScreenBody">
+            <div id="shoot-arena">
+
+                <div id="shoot-hud">
+                    <div class="hud-box">
+                        <div class="hud-label">امتیاز</div>
+                        <div class="hud-value" id="shoot-score">0</div>
+                    </div>
+                    <div class="hud-box">
+                        <div class="hud-label">زمان</div>
+                        <div class="hud-value" id="shoot-timer">30</div>
+                    </div>
+                </div>
+
+                <div class="shoot-overlay visible" id="shoot-startOverlay">
+                    <div class="shoot-title">🐷 شکار خوک‌ها</div>
+                    <div class="shoot-desc">۳۰ ثانیه وقت داری، هر خوک شکار‌شده = ۱ کوین</div>
+                    <button class="shoot-btn" id="shoot-startBtn">▶ شروع</button>
+                </div>
+
+                <div class="shoot-overlay" id="shoot-endOverlay">
+                    <div class="shoot-title">⏱ تموم شد!</div>
+                    <div id="shoot-finalScore"></div>
+                    <div id="shoot-status"></div>
+                    <button class="shoot-btn" id="shoot-restartBtn">🔄 دوباره</button>
+                </div>
+
+            </div>
         </div>
     </div>
 
@@ -665,8 +870,130 @@ function setStatus(text){
     statusEl.textContent = text;
 }
 
+/* =========================================================
+   PET EVOLUTION (grows like a Hamster-Kombat style pet as
+   the wallet grows — purely visual, tied to total coins)
+========================================================= */
+
+/* =========================================================
+   PET EVOLUTION (grows like a Hamster-Kombat style pet as
+   the wallet grows — purely visual, tied to total coins)
+   The bird itself is drawn with SVG, not an emoji, and its
+   shape/accessories change per tier.
+========================================================= */
+
+const PET_TIERS = [
+    {
+        min:0, name:"جوجه", icon:"🐣", size:150,
+        bodyColor1:"#fff3b0", bodyColor2:"#ffd23f", wingColor:"#ffcf4d",
+        hasBrow:false, hasTuft:false, hasCrown:false, hasGlow:false, hasSparkle:false
+    },
+    {
+        min:100, name:"نوجوان", icon:"🐤", size:180,
+        bodyColor1:"#ffb27a", bodyColor2:"#ff7a3d", wingColor:"#e8631f",
+        hasBrow:false, hasTuft:true, hasCrown:false, hasGlow:false, hasSparkle:false
+    },
+    {
+        min:1000, name:"بالغ", icon:"🐦", size:210,
+        bodyColor1:"#ff8a8a", bodyColor2:"#c40000", wingColor:"#8c0000",
+        hasBrow:true, hasTuft:false, hasCrown:false, hasGlow:false, hasSparkle:false
+    },
+    {
+        min:10000, name:"افسانه‌ای", icon:"🦅", size:240,
+        bodyColor1:"#ffe08a", bodyColor2:"#c40000", wingColor:"#b8860b",
+        hasBrow:true, hasTuft:false, hasCrown:true, hasGlow:true, hasSparkle:true
+    },
+];
+
+function getPetTier(coins){
+    let tier = PET_TIERS[0];
+    for(const t of PET_TIERS){
+        if(coins >= t.min) tier = t;
+    }
+    return tier;
+}
+
+function birdSVG(tier){
+
+    return `
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <radialGradient id="bodyGrad" cx="35%" cy="28%" r="75%">
+                <stop offset="0%" stop-color="${tier.bodyColor1}"/>
+                <stop offset="100%" stop-color="${tier.bodyColor2}"/>
+            </radialGradient>
+            ${tier.hasGlow ? `
+            <radialGradient id="glowGrad" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#ffd700" stop-opacity=".75"/>
+                <stop offset="100%" stop-color="#ffd700" stop-opacity="0"/>
+            </radialGradient>` : ``}
+        </defs>
+
+        ${tier.hasGlow ? `<circle cx="100" cy="105" r="98" fill="url(#glowGrad)"/>` : ``}
+
+        <ellipse cx="38" cy="122" rx="24" ry="36" fill="${tier.wingColor}" transform="rotate(-22 38 122)"/>
+        <ellipse cx="162" cy="122" rx="24" ry="36" fill="${tier.wingColor}" transform="rotate(22 162 122)"/>
+
+        <circle cx="100" cy="107" r="76" fill="url(#bodyGrad)"/>
+
+        ${tier.hasTuft ? `
+        <path d="M92,38 Q102,6 118,34 Q106,22 92,38 Z" fill="${tier.bodyColor2}"/>` : ``}
+
+        ${tier.hasCrown ? `
+        <path d="M62,48 L74,18 L92,42 L100,10 L108,42 L126,18 L138,48 Z"
+              fill="#ffd700" stroke="#b8860b" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="100" cy="14" r="6" fill="#fff06a"/>` : ``}
+
+        ${tier.hasBrow ? `
+        <path d="M56,78 Q74,58 95,73" stroke="#111" stroke-width="8" fill="none" stroke-linecap="round"/>
+        <path d="M144,78 Q126,58 105,73" stroke="#111" stroke-width="8" fill="none" stroke-linecap="round"/>
+        ` : ``}
+
+        <circle cx="76" cy="98" r="17" fill="white" stroke="#111" stroke-width="3"/>
+        <circle cx="124" cy="98" r="17" fill="white" stroke="#111" stroke-width="3"/>
+        <circle cx="79" cy="101" r="6.5" fill="#111"/>
+        <circle cx="121" cy="101" r="6.5" fill="#111"/>
+
+        <polygon points="86,118 114,118 100,146" fill="#ffb300" stroke="#c78800" stroke-width="2" stroke-linejoin="round"/>
+
+        ${tier.hasSparkle ? `
+        <text x="24" y="55" font-size="20">✨</text>
+        <text x="158" y="65" font-size="15">✨</text>
+        <text x="148" y="172" font-size="17">✨</text>
+        ` : ``}
+    </svg>`;
+}
+
+function updatePetVisual(){
+
+    const tapBtn = document.getElementById("tap-btn");
+    const tapZone = document.getElementById("tap-zone");
+    const levelEl = document.getElementById("tap-petLevel");
+    const progressBar = document.getElementById("tap-petProgressBar");
+
+    if(!tapBtn) return;
+
+    const tier = getPetTier(hubWalletCoins);
+    const idx = PET_TIERS.indexOf(tier);
+    const next = PET_TIERS[idx+1];
+
+    tapBtn.innerHTML = birdSVG(tier);
+    tapZone.style.width = tier.size + "px";
+    tapZone.style.height = tier.size + "px";
+    levelEl.textContent = `${tier.icon} ${tier.name}`;
+
+    if(next){
+        const range = next.min - tier.min;
+        const progress = Math.min(1, (hubWalletCoins - tier.min) / range);
+        progressBar.style.width = (progress*100) + "%";
+    }else{
+        progressBar.style.width = "100%";
+    }
+}
+
 function updateWalletDisplay(){
     walletValueEl.textContent = hubWalletCoins;
+    updatePetVisual();
 }
 
 function addCoinsLocally(amount){
@@ -681,6 +1008,7 @@ async function initWallet(){
             "⚠️ کاربر تلگرام شناسایی نشد — این صفحه رو باید از داخل " +
             "خود تلگرام (دکمه منو یا /play) باز کنی."
         );
+        updatePetVisual();
         return;
     }
 
@@ -749,6 +1077,7 @@ function showScreen(name){
     // stop whichever game we're leaving
     if(currentScreen === "tap" && window.TapGame) window.TapGame.stop();
     if(currentScreen === "reaction" && window.ReactionGame) window.ReactionGame.stop();
+    if(currentScreen === "shooter" && window.PigHunter) window.PigHunter.stop();
     if(currentScreen === "subway" && window.SubwayBird) window.SubwayBird.stop();
 
     currentScreen = name;
@@ -756,6 +1085,7 @@ function showScreen(name){
     // start the one we're entering
     if(name === "tap" && window.TapGame) window.TapGame.start();
     if(name === "reaction" && window.ReactionGame) window.ReactionGame.start();
+    if(name === "shooter" && window.PigHunter) window.PigHunter.start();
     if(name === "subway" && window.SubwayBird) window.SubwayBird.start();
 }
 
@@ -1040,6 +1370,211 @@ window.addEventListener("load", initWallet);
         stop(){
             clearTimeout(waitTimer);
             state = "idle";
+        }
+    };
+
+})();
+</script>
+
+<script>
+/* =========================================================
+   PIG HUNTER MODULE (shooter)
+========================================================= */
+(function(){
+
+    const ROUND_SECONDS = 30;
+    const SPAWN_INTERVAL_MS = 700;
+
+    const arena = document.getElementById("shoot-arena");
+    const scoreEl = document.getElementById("shoot-score");
+    const timerEl = document.getElementById("shoot-timer");
+    const startOverlay = document.getElementById("shoot-startOverlay");
+    const endOverlay = document.getElementById("shoot-endOverlay");
+    const startBtn = document.getElementById("shoot-startBtn");
+    const restartBtn = document.getElementById("shoot-restartBtn");
+    const finalScoreEl = document.getElementById("shoot-finalScore");
+    const statusEl = document.getElementById("shoot-status");
+
+    let score = 0;
+    let timeLeft = ROUND_SECONDS;
+    let spawnTimer = null;
+    let countdownTimer = null;
+    let running = false;
+    let pigs = [];
+
+    function spawnFloatingPlusOne(x, y){
+
+        const el = document.createElement("div");
+        el.className = "floatup";
+        el.textContent = "+1";
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+
+        arena.appendChild(el);
+        setTimeout(()=>el.remove(), 800);
+    }
+
+    function spawnPig(){
+
+        if(!running) return;
+
+        const size = 40 + Math.random()*30;
+        const arenaRect = arena.getBoundingClientRect();
+
+        const x = 10 + Math.random() * Math.max(10, arenaRect.width - size - 20);
+        const y = 70 + Math.random() * Math.max(10, arenaRect.height - size - 90);
+
+        const pig = document.createElement("div");
+        pig.className = "shoot-pig";
+        pig.style.width = size + "px";
+        pig.style.height = size + "px";
+        pig.style.left = x + "px";
+        pig.style.top = y + "px";
+        pig.innerHTML = '<div class="shoot-snout"></div>';
+
+        arena.appendChild(pig);
+
+        const entry = {el: pig, timeout: null};
+
+        entry.timeout = setTimeout(()=>{
+            pig.remove();
+            pigs = pigs.filter(p=>p!==entry);
+        }, 900 + Math.random()*700);
+
+        pigs.push(entry);
+
+        pig.addEventListener("pointerdown", e=>{
+
+            if(!running) return;
+
+            e.stopPropagation();
+            e.preventDefault();
+
+            clearTimeout(entry.timeout);
+            pig.classList.add("hit");
+
+            score++;
+            scoreEl.textContent = score;
+
+            const rect = arena.getBoundingClientRect();
+            spawnFloatingPlusOne(
+                (e.clientX ?? rect.left+rect.width/2) - rect.left,
+                (e.clientY ?? rect.top+rect.height/2) - rect.top
+            );
+
+            setTimeout(()=>pig.remove(), 150);
+            pigs = pigs.filter(p=>p!==entry);
+        });
+    }
+
+    function clearAllPigs(){
+        pigs.forEach(p=>{
+            clearTimeout(p.timeout);
+            p.el.remove();
+        });
+        pigs = [];
+    }
+
+    function startRound(){
+
+        score = 0;
+        timeLeft = ROUND_SECONDS;
+
+        scoreEl.textContent = "0";
+        timerEl.textContent = timeLeft;
+
+        running = true;
+        startOverlay.classList.remove("visible");
+        endOverlay.classList.remove("visible");
+
+        clearAllPigs();
+
+        clearInterval(spawnTimer);
+        clearInterval(countdownTimer);
+
+        spawnTimer = setInterval(spawnPig, SPAWN_INTERVAL_MS);
+
+        countdownTimer = setInterval(()=>{
+
+            timeLeft--;
+            timerEl.textContent = timeLeft;
+
+            if(timeLeft <= 0) endRound();
+
+        }, 1000);
+    }
+
+    async function endRound(){
+
+        if(!running) return;
+
+        running = false;
+        clearInterval(spawnTimer);
+        clearInterval(countdownTimer);
+        clearAllPigs();
+
+        finalScoreEl.textContent = `🐷 ${score} خوک شکار کردی`;
+        endOverlay.classList.add("visible");
+
+        if(score > 0){
+            statusEl.textContent = "⏳ در حال ثبت کوین...";
+            await sendReward(score);
+        }else{
+            statusEl.textContent = "";
+        }
+    }
+
+    async function sendReward(amount){
+
+        if(!HUB_USER_ID){
+            statusEl.textContent = "⚠️ کاربر تلگرام شناسایی نشد";
+            return;
+        }
+
+        try{
+
+            const res = await fetch(`${BOT_API_URL}/tap`, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({user_id:HUB_USER_ID, name:HUB_USER_NAME, taps:amount})
+            });
+
+            const data = await res.json();
+
+            if(data.ok){
+                hubWalletCoins = data.coins;
+                updateWalletDisplay();
+                statusEl.textContent = `✅ ${amount} کوین اضافه شد`;
+            }else{
+                statusEl.textContent = `❌ ذخیره نشد: ${data.error || res.status}`;
+            }
+
+        }catch(err){
+
+            statusEl.textContent = "❌ اتصال قطع شد";
+            console.error("pig hunter reward error:", err);
+        }
+    }
+
+    startBtn.addEventListener("click", startRound);
+    restartBtn.addEventListener("click", startRound);
+
+    window.PigHunter = {
+
+        start(){
+            running = false;
+            clearAllPigs();
+            startOverlay.classList.add("visible");
+            endOverlay.classList.remove("visible");
+            scoreEl.textContent = "0";
+            timerEl.textContent = ROUND_SECONDS;
+        },
+
+        stop(){
+            running = false;
+            clearInterval(spawnTimer);
+            clearInterval(countdownTimer);
+            clearAllPigs();
         }
     };
 

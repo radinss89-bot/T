@@ -4,6 +4,7 @@ import html
 import time
 import asyncio
 import logging
+from datetime import date, timedelta
 from threading import Thread
 
 import psycopg2
@@ -81,6 +82,16 @@ def add_cors_headers(response):
 
 @web.route("/game-score", methods=["OPTIONS"])
 def game_score_preflight():
+    return ("", 204)
+
+
+@web.route("/tap", methods=["OPTIONS"])
+def tap_preflight():
+    return ("", 204)
+
+
+@web.route("/checkin", methods=["OPTIONS"])
+def checkin_preflight():
     return ("", 204)
 
 
@@ -316,6 +327,8 @@ EXPECTED_SCHEMA = {
         "coins": "BIGINT DEFAULT 0",
         "total_coins": "BIGINT DEFAULT 0",
         "last_message": "DOUBLE PRECISION DEFAULT 0",
+        "streak_count": "INTEGER DEFAULT 0",
+        "last_checkin_date": "TEXT",
     },
     "bot_groups": {
         "chat_id": "BIGINT",
@@ -2650,6 +2663,245 @@ async def unsetmarketgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GAME SCORE API (Flask — runs in its own thread already,
 # so it does NOT need run_db; it's fine to be blocking here)
 # =========================================================
+
+STREAK_BONUS_PER_DAY = 5
+TAP_ANTI_ABUSE_CAP = 1000  # max taps accepted in a single /tap request
+
+
+@web.route("/balance", methods=["GET"])
+def balance_api():
+    """Lets a mini-game show the player's current wallet balance
+    without needing them to type /balance in the chat.
+    Usage: GET /balance?user_id=12345
+    """
+
+    try:
+
+        user_id = request.args.get("user_id")
+
+        if not user_id:
+            return jsonify({"ok": False, "error": "missing_user_id"}), 400
+
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return jsonify({"ok": False, "error": "invalid_user_id"}), 400
+
+        conn = get_conn()
+
+        try:
+
+            cur = conn.cursor()
+
+            cur.execute(
+                "SELECT coins, streak_count FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+
+            row = cur.fetchone()
+            cur.close()
+
+        finally:
+
+            put_conn(conn)
+
+        coins = row[0] if row else 0
+        streak = (row[1] if row and row[1] else 0)
+
+        return jsonify({"ok": True, "coins": coins, "streak": streak})
+
+    except Exception:
+
+        logger.exception("Balance API error")
+        return jsonify({"ok": False, "error": "server_error"}), 500
+
+
+@web.route("/checkin", methods=["POST"])
+def checkin():
+    """Daily streak check-in (TikTok-style). Call this once when a
+    mini-game opens. Awards a small coin bonus the first time each
+    day, and tracks a consecutive-day streak that resets if a day
+    is missed.
+    """
+
+    try:
+
+        data = request.get_json(silent=True)
+
+        if not data:
+            return jsonify({"ok": False, "error": "invalid_json"}), 400
+
+        user_id = data.get("user_id")
+        name = str(data.get("name") or "Player")[:100]
+
+        if user_id is None:
+            return jsonify({"ok": False, "error": "missing_user_id"}), 400
+
+        try:
+            user_id = int(user_id)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "invalid_user_id"}), 400
+
+        today = date.today()
+        today_str = today.isoformat()
+
+        conn = get_conn()
+
+        try:
+
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO users (user_id, first_name)
+                VALUES (%s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name
+            """, (user_id, name))
+
+            cur.execute("""
+                SELECT streak_count, last_checkin_date
+                FROM users WHERE user_id = %s
+            """, (user_id,))
+
+            row = cur.fetchone()
+            streak, last_date_str = row
+            streak = streak or 0
+
+            already_checked_in_today = (last_date_str == today_str)
+            bonus = 0
+
+            if not already_checked_in_today:
+
+                if last_date_str:
+
+                    last_checkin = date.fromisoformat(last_date_str)
+
+                    if today - last_checkin == timedelta(days=1):
+                        streak += 1
+                    else:
+                        streak = 1  # streak broken — missed a day
+
+                else:
+
+                    streak = 1  # first ever check-in
+
+                bonus = STREAK_BONUS_PER_DAY * min(streak, 7)
+
+                cur.execute("""
+                    UPDATE users
+                    SET
+                        streak_count = %s,
+                        last_checkin_date = %s,
+                        coins = coins + %s,
+                        total_coins = total_coins + %s
+                    WHERE user_id = %s
+                """, (streak, today_str, bonus, bonus, user_id))
+
+            conn.commit()
+            cur.close()
+
+        except Exception:
+
+            conn.rollback()
+            raise
+
+        finally:
+
+            put_conn(conn)
+
+        return jsonify({
+            "ok": True,
+            "streak": streak,
+            "already_checked_in_today": already_checked_in_today,
+            "bonus_awarded": bonus
+        })
+
+    except Exception:
+
+        logger.exception("Checkin error")
+        return jsonify({"ok": False, "error": "server_error"}), 500
+
+
+@web.route("/tap", methods=["POST"])
+def tap_earn():
+    """Called by the AngryCoin Tap mini-game. Adds 1 coin per tap
+    (batched — the game sends taps in small groups, not one request
+    per tap) directly to the player's wallet.
+    """
+
+    try:
+
+        data = request.get_json(silent=True)
+
+        if not data:
+            return jsonify({"ok": False, "error": "invalid_json"}), 400
+
+        user_id = data.get("user_id")
+        name = str(data.get("name") or "Player")[:100]
+        taps = data.get("taps", 0)
+
+        if user_id is None:
+            return jsonify({"ok": False, "error": "missing_user_id"}), 400
+
+        try:
+            user_id = int(user_id)
+            taps = int(taps)
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "invalid_values"}), 400
+
+        if user_id <= 0:
+            return jsonify({"ok": False, "error": "invalid_user_id"}), 400
+
+        if taps <= 0:
+            return jsonify({"ok": False, "error": "invalid_taps"}), 400
+
+        if taps > TAP_ANTI_ABUSE_CAP:
+            taps = TAP_ANTI_ABUSE_CAP
+
+        conn = get_conn()
+
+        try:
+
+            cur = conn.cursor()
+
+            cur.execute("""
+                INSERT INTO users (user_id, first_name, coins, total_coins)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    first_name = EXCLUDED.first_name,
+                    coins = users.coins + EXCLUDED.coins,
+                    total_coins = users.total_coins + EXCLUDED.total_coins
+            """, (user_id, name, taps, taps))
+
+            cur.execute(
+                "SELECT coins FROM users WHERE user_id = %s",
+                (user_id,)
+            )
+
+            new_balance = cur.fetchone()[0]
+
+            conn.commit()
+            cur.close()
+
+        except Exception:
+
+            conn.rollback()
+            raise
+
+        finally:
+
+            put_conn(conn)
+
+        return jsonify({
+            "ok": True,
+            "taps_added": taps,
+            "coins": new_balance
+        })
+
+    except Exception:
+
+        logger.exception("Tap earn error")
+        return jsonify({"ok": False, "error": "server_error"}), 500
+
 
 @web.route("/game-score", methods=["POST"])
 def game_score():

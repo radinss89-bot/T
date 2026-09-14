@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>AngryCoin Tap</title>
+<title>AngryCoin Games</title>
 
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
@@ -23,24 +23,35 @@ html,body{
     font-family:Arial,sans-serif;
     background:#121826;
     touch-action:manipulation;
+    color:white;
 }
 
 body{
     display:flex;
     flex-direction:column;
-    color:white;
 }
 
 /* =========================
-   TOP BAR
+   TOP BAR (shared, always visible)
 ========================= */
 
 #topbar{
     display:flex;
-    justify-content:space-between;
     align-items:center;
-    padding:14px 16px;
     gap:10px;
+    padding:12px 14px;
+    flex-shrink:0;
+}
+
+#backBtn{
+    display:none;
+    border:none;
+    background:rgba(255,255,255,.08);
+    color:white;
+    width:36px;
+    height:36px;
+    border-radius:12px;
+    font-size:18px;
 }
 
 .pill{
@@ -51,7 +62,7 @@ body{
     border-radius:999px;
     background:rgba(255,255,255,.08);
     border:1px solid rgba(255,255,255,.1);
-    font-size:15px;
+    font-size:14px;
     font-weight:bold;
 }
 
@@ -60,8 +71,10 @@ body{
     border-color:rgba(255,150,50,.3);
 }
 
+#topbar .spacer{ flex:1 }
+
 /* =========================
-   STATUS BAR
+   STATUS
 ========================= */
 
 #status{
@@ -69,92 +82,171 @@ body{
     font-size:12px;
     min-height:16px;
     opacity:.75;
-    padding:0 16px;
+    padding:0 16px 8px;
+    flex-shrink:0;
 }
 
 /* =========================
-   MAIN
+   SCREENS
 ========================= */
 
-#main{
+#screens{
+    flex:1;
+    position:relative;
+    overflow:hidden;
+}
+
+.screen{
+    position:absolute;
+    inset:0;
+    display:none;
+    flex-direction:column;
+}
+
+.screen.active{
+    display:flex;
+}
+
+/* =========================
+   MENU
+========================= */
+
+#screen-menu{
+    padding:10px 16px 16px;
+    align-items:stretch;
+    justify-content:flex-start;
+    gap:14px;
+    overflow-y:auto;
+}
+
+#menuTitle{
+    font-size:22px;
+    font-weight:900;
+    margin:6px 0 4px;
+}
+
+#menuSubtitle{
+    font-size:13px;
+    opacity:.6;
+    margin-bottom:8px;
+}
+
+.gameCard{
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:16px;
+    border-radius:20px;
+    background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.09);
+    text-align:right;
+}
+
+.gameCard .emoji{
+    font-size:40px;
+    width:60px;
+    text-align:center;
+    flex-shrink:0;
+}
+
+.gameCard .info{
+    flex:1;
+}
+
+.gameCard .title{
+    font-size:17px;
+    font-weight:bold;
+    margin-bottom:3px;
+}
+
+.gameCard .desc{
+    font-size:12px;
+    opacity:.65;
+}
+
+.gameCard .arrow{
+    font-size:20px;
+    opacity:.4;
+}
+
+.gameCard:active{
+    background:rgba(255,255,255,.1);
+}
+
+.comingSoonCard{
+    opacity:.45;
+}
+
+/* =========================
+   GENERIC BACK-ENABLED SCREEN HEADER SPACING
+========================= */
+
+.gameScreenBody{
     flex:1;
     display:flex;
     flex-direction:column;
     align-items:center;
     justify-content:center;
     position:relative;
+    overflow:hidden;
 }
 
-#coinCount{
-    font-size:46px;
+/* =========================================================
+   TAP GAME
+========================================================= */
+
+#tap-coinCount{
+    font-size:44px;
     font-weight:900;
-    margin-bottom:6px;
+    margin-bottom:4px;
     display:flex;
     align-items:center;
     gap:8px;
 }
 
-#coinCountLabel{
-    font-size:13px;
+#tap-coinLabel{
+    font-size:12px;
     opacity:.6;
-    margin-bottom:26px;
+    margin-bottom:24px;
 }
 
-/* =========================
-   TAP BUTTON
-========================= */
-
-#tapZone{
+#tap-zone{
     position:relative;
-    width:min(64vw,260px);
-    height:min(64vw,260px);
+    width:min(60vw,240px);
+    height:min(60vw,240px);
 }
 
-#tapBtn{
+#tap-btn{
     width:100%;
     height:100%;
     border-radius:50%;
     border:none;
-    cursor:pointer;
 
     background:
-        radial-gradient(
-            circle at 32% 25%,
-            #ff8a8a 0 8%,
-            #f33 25%,
-            #c40000 75%,
-            #7a0000 100%
-        );
+        radial-gradient(circle at 32% 25%,#ff8a8a 0 8%,#f33 25%,#c40000 75%,#7a0000 100%);
 
     box-shadow:
         0 18px 40px rgba(255,30,30,.35),
         inset -10px -12px 20px rgba(0,0,0,.3),
         inset 8px 6px 16px rgba(255,255,255,.25);
 
-    font-size:64px;
-
+    font-size:60px;
     transition:transform .08s ease;
 }
 
-#tapBtn:active{
-    transform:scale(.93);
-}
+#tap-btn:active{ transform:scale(.93); }
 
-#tapZone.pulse #tapBtn{
-    animation:pulse .5s ease;
-}
+#tap-zone.pulse #tap-btn{ animation:tapPulse .5s ease; }
 
-@keyframes pulse{
+@keyframes tapPulse{
     0%{box-shadow:0 18px 40px rgba(255,30,30,.35),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.25);}
     50%{box-shadow:0 18px 55px rgba(255,80,80,.6),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.35);}
     100%{box-shadow:0 18px 40px rgba(255,30,30,.35),inset -10px -12px 20px rgba(0,0,0,.3),inset 8px 6px 16px rgba(255,255,255,.25);}
 }
 
-/* floating +1 */
-
 .floatup{
     position:absolute;
-    font-size:20px;
+    font-size:18px;
     font-weight:bold;
     color:#ffd23f;
     pointer-events:none;
@@ -162,82 +254,389 @@ body{
 }
 
 @keyframes floatUp{
-    from{
-        transform:translateY(0);
-        opacity:1;
-    }
-    to{
-        transform:translateY(-70px);
-        opacity:0;
-    }
+    from{ transform:translateY(0); opacity:1; }
+    to{ transform:translateY(-70px); opacity:0; }
 }
 
-/* =========================
-   BOTTOM NAV (future games)
-========================= */
+/* =========================================================
+   REACTION GAME
+========================================================= */
 
-#bottomNav{
+#reaction-box{
+    width:80%;
+    max-width:320px;
+    height:220px;
+    border-radius:24px;
     display:flex;
-    border-top:1px solid rgba(255,255,255,.08);
-}
-
-.navBtn{
-    flex:1;
-    padding:14px 6px;
-    text-align:center;
-    font-size:12px;
-    color:rgba(255,255,255,.55);
-    background:none;
-    border:none;
-}
-
-.navBtn.active{
-    color:white;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    gap:10px;
+    font-size:18px;
     font-weight:bold;
+    text-align:center;
+    padding:20px;
+    background:rgba(255,255,255,.06);
+    border:2px solid rgba(255,255,255,.1);
+    transition:background .1s;
 }
 
-.navBtn .icon{
-    font-size:20px;
-    display:block;
-    margin-bottom:3px;
+#reaction-box.wait{
+    background:rgba(255,60,60,.18);
+    border-color:rgba(255,80,80,.3);
 }
+
+#reaction-box.go{
+    background:rgba(50,200,90,.35);
+    border-color:rgba(80,230,120,.5);
+}
+
+#reaction-result{
+    font-size:14px;
+    opacity:.8;
+    min-height:20px;
+}
+
+#reaction-best{
+    font-size:12px;
+    opacity:.55;
+}
+
+#reaction-startBtn{
+    margin-top:18px;
+    border:none;
+    padding:13px 34px;
+    border-radius:15px;
+    background:#e31b23;
+    color:white;
+    font-size:16px;
+    font-weight:bold;
+    box-shadow:0 7px 18px rgba(0,0,0,.35);
+}
+
+#reaction-startBtn:active{ transform:scale(.95); }
+
+/* =========================================================
+   SUBWAY BIRD (kept close to the original standalone build)
+========================================================= */
+
+#screen-subway .gameScreenBody{
+    padding:0;
+}
+
+#game{
+    position:relative;
+    width:min(92vw,480px);
+    height:min(88%,700px);
+    overflow:hidden;
+    border-radius:28px;
+    background:#171b23;
+    box-shadow:0 20px 60px rgba(0,0,0,.65),inset 0 0 0 2px rgba(255,255,255,.08);
+}
+
+#sky{
+    position:absolute;
+    inset:0 0 45% 0;
+    background:
+        radial-gradient(circle at 20% 25%,rgba(255,255,255,.9) 0 2px,transparent 3px),
+        radial-gradient(circle at 75% 18%,rgba(255,255,255,.7) 0 1px,transparent 2px),
+        linear-gradient(to bottom,#151a29 0%,#242d46 55%,#3c465d 100%);
+}
+
+#moon{
+    position:absolute;width:60px;height:60px;right:30px;top:22px;border-radius:50%;
+    background:#f4f1d0;
+    box-shadow:0 0 25px rgba(255,245,180,.35),0 0 70px rgba(255,245,180,.12);
+}
+
+#city{
+    position:absolute;left:0;right:0;bottom:0;height:45%;
+    display:flex;align-items:flex-end;gap:4px;padding:0 5px;
+}
+
+.building{
+    flex:1;
+    background:
+        repeating-linear-gradient(to bottom,rgba(255,255,255,.12) 0 7px,transparent 7px 17px),
+        #202532;
+    border-radius:3px 3px 0 0;
+}
+
+#road{
+    position:absolute;left:0;right:0;top:29%;bottom:0;overflow:hidden;
+    background:linear-gradient(90deg,#16191f 0%,#252a32 16%,#30353e 50%,#252a32 84%,#16191f 100%);
+    box-shadow:inset 15px 0 20px rgba(0,0,0,.25),inset -15px 0 20px rgba(0,0,0,.25);
+}
+
+.lane-line{
+    position:absolute;top:-100%;bottom:-100%;width:4px;
+    background:repeating-linear-gradient(to bottom,rgba(255,255,255,.55) 0 32px,transparent 32px 70px);
+    animation:roadMove .7s linear infinite;
+}
+
+.line1{ left:33.33%; }
+.line2{ left:66.66%; }
+
+@keyframes roadMove{ from{transform:translateY(0)} to{transform:translateY(70px)} }
+
+.edge{ position:absolute;top:0;bottom:0;width:7px;background:linear-gradient(to bottom,#777,#ddd 50%,#777);opacity:.45; }
+.edge.left{left:0} .edge.right{right:0}
+
+#hud{
+    position:absolute;z-index:20;top:12px;left:12px;right:12px;
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+}
+
+.hud-box{
+    min-width:95px;padding:8px 12px;border-radius:16px;
+    background:rgba(10,12,18,.62);border:1px solid rgba(255,255,255,.1);
+    text-align:center;
+}
+
+.hud-label{ font-size:9px;opacity:.55;margin-bottom:2px; }
+.hud-value{ font-size:18px;font-weight:bold; }
+
+#player{
+    position:absolute;z-index:10;width:58px;height:58px;border-radius:50%;
+    background:radial-gradient(circle at 32% 25%,#ff7777 0 8%,#f22 25%,#bd0000 75%,#750000 100%);
+    box-shadow:0 10px 18px rgba(0,0,0,.45),inset -7px -8px 12px rgba(0,0,0,.25),inset 5px 4px 10px rgba(255,255,255,.2);
+    transition:left .14s cubic-bezier(.2,.9,.3,1),transform .12s ease;
+}
+
+.eye{ position:absolute;width:16px;height:19px;top:13px;border-radius:50%;background:white;border:2px solid #111;overflow:hidden; }
+.eye.left{ left:11px; } .eye.right{ right:11px; }
+.eye::after{ content:"";position:absolute;width:6px;height:8px;background:#111;border-radius:50%;left:5px;top:5px; }
+
+.brow{ position:absolute;width:18px;height:4px;top:7px;background:#111;border-radius:5px; }
+.brow.left{ left:9px;transform:rotate(-12deg); }
+.brow.right{ right:9px;transform:rotate(12deg); }
+
+.beak{
+    position:absolute;width:0;height:0;left:50%;top:34px;transform:translateX(-50%);
+    border-left:11px solid transparent;border-right:11px solid transparent;border-top:17px solid #ffb300;
+}
+
+.coin{
+    position:absolute;z-index:7;width:34px;height:34px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%,#fff 0 7%,#eee 8% 18%,#bbb 19% 100%);
+    border:3px solid #888;
+    animation:coinSpin .65s linear infinite,coinGlow 1s ease-in-out infinite alternate;
+}
+
+.coin::after{ content:"🪙";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;filter:grayscale(1); }
+
+@keyframes coinSpin{ 0%{transform:rotateY(0deg)} 100%{transform:rotateY(360deg)} }
+@keyframes coinGlow{ from{filter:brightness(.9)} to{filter:brightness(1.25)} }
+
+.obstacle{
+    position:absolute;z-index:7;width:48px;height:48px;border-radius:12px;
+    background:linear-gradient(135deg,#fafafa,#bfc3ca 45%,#666b73 100%);
+    border:3px solid #444;
+}
+
+.obstacle::before{
+    content:"";position:absolute;left:7px;right:7px;top:9px;height:5px;border-radius:4px;background:#777;
+    box-shadow:0 12px #777,0 24px #777;
+}
+
+.speed-line{
+    position:absolute;z-index:3;width:2px;height:40px;background:rgba(255,255,255,.15);
+    animation:speedLine .5s linear infinite;
+}
+
+@keyframes speedLine{
+    from{transform:translateY(-100px);opacity:0}
+    20%{opacity:1}
+    to{transform:translateY(700px);opacity:0}
+}
+
+#gameOver{
+    position:absolute;z-index:100;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(4,6,10,.72);backdrop-filter:blur(9px);
+}
+
+.gameover-card{
+    width:82%;padding:26px 18px;border-radius:25px;text-align:center;
+    background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.04));
+    border:1px solid rgba(255,255,255,.15);
+}
+
+.gameover-title{ font-size:30px;font-weight:900;margin-bottom:10px; }
+.gameover-score{ font-size:20px;margin-bottom:6px; }
+.gameover-reward{ font-size:15px;opacity:.8;margin-bottom:8px; }
+.gameover-status{ font-size:13px;min-height:18px;margin-bottom:12px;opacity:.9; }
+
+#restart{
+    border:none;padding:12px 28px;border-radius:15px;background:#e31b23;color:white;
+    font-size:16px;font-weight:bold;
+}
+
+#restart:active{ transform:scale(.94); }
+
+#controls{
+    position:absolute;z-index:30;left:0;right:0;bottom:14px;
+    display:flex;justify-content:center;gap:30px;pointer-events:none;
+}
+
+.control{
+    pointer-events:auto;width:60px;height:60px;border-radius:20px;
+    border:1px solid rgba(255,255,255,.18);background:rgba(15,17,22,.72);
+    color:white;font-size:26px;
+}
+
+.control:active{ transform:scale(.9); background:rgba(255,255,255,.15); }
+
+#flash{ position:absolute;z-index:90;inset:0;pointer-events:none;background:white;opacity:0; }
+.flash{ animation:sbFlash .25s ease; }
+@keyframes sbFlash{ 0%{opacity:.8} 100%{opacity:0} }
 </style>
 </head>
 
 <body>
 
 <div id="topbar">
-    <div class="pill" id="walletPill">💰 <span id="walletValue">0</span></div>
+    <button id="backBtn">◀</button>
+    <div class="pill">💰 <span id="walletValue">0</span></div>
     <div class="pill" id="streakPill">🔥 <span id="streakValue">0</span> روز</div>
+    <div class="spacer"></div>
 </div>
 
 <div id="status"></div>
 
-<div id="main">
+<div id="screens">
 
-    <div id="coinCount">🪙 <span id="sessionCoins">0</span></div>
-    <div id="coinCountLabel">سکه‌ی این نشست (هنوز ذخیره نشده)</div>
+    <!-- ============ MENU ============ -->
+    <div class="screen active" id="screen-menu">
 
-    <div id="tapZone">
-        <button id="tapBtn">😠</button>
+        <div id="menuTitle">🎮 AngryCoin Games</div>
+        <div id="menuSubtitle">یه بازی انتخاب کن و کوین جمع کن</div>
+
+        <div class="gameCard" data-game="tap">
+            <div class="emoji">🪙</div>
+            <div class="info">
+                <div class="title">AngryCoin Tap</div>
+                <div class="desc">هرچی بیشتر بزنی، بیشتر می‌گیری</div>
+            </div>
+            <div class="arrow">‹</div>
+        </div>
+
+        <div class="gameCard" data-game="subway">
+            <div class="emoji">🏃</div>
+            <div class="info">
+                <div class="title">Subway Bird</div>
+                <div class="desc">فرار از موانع، جمع‌کردن سکه</div>
+            </div>
+            <div class="arrow">‹</div>
+        </div>
+
+        <div class="gameCard" data-game="reaction">
+            <div class="emoji">⚡</div>
+            <div class="info">
+                <div class="title">واکنش سریع</div>
+                <div class="desc">تا رنگ سبز شد بزن، سرعتت رو بسنج</div>
+            </div>
+            <div class="arrow">‹</div>
+        </div>
+
+        <div class="gameCard comingSoonCard">
+            <div class="emoji">👥</div>
+            <div class="info">
+                <div class="title">بازی‌های دونفره</div>
+                <div class="desc">به‌زودی...</div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ============ TAP GAME ============ -->
+    <div class="screen" id="screen-tap">
+        <div class="gameScreenBody">
+            <div id="tap-coinCount">🪙 <span id="tap-sessionCoins">0</span></div>
+            <div id="tap-coinLabel">سکه‌ی این نشست</div>
+            <div id="tap-zone">
+                <button id="tap-btn">😠</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ REACTION GAME ============ -->
+    <div class="screen" id="screen-reaction">
+        <div class="gameScreenBody">
+            <div id="reaction-box" class="idle">
+                <div id="reaction-message">آماده‌ای؟</div>
+            </div>
+            <div id="reaction-result"></div>
+            <div id="reaction-best">بهترین زمانت: --</div>
+            <button id="reaction-startBtn">▶ شروع</button>
+        </div>
+    </div>
+
+    <!-- ============ SUBWAY BIRD ============ -->
+    <div class="screen" id="screen-subway">
+        <div class="gameScreenBody">
+
+            <div id="game">
+
+                <div id="sky">
+                    <div id="moon"></div>
+                    <div id="city"></div>
+                </div>
+
+                <div id="road">
+                    <div class="lane-line line1"></div>
+                    <div class="lane-line line2"></div>
+                    <div class="edge left"></div>
+                    <div class="edge right"></div>
+                </div>
+
+                <div id="hud">
+                    <div class="hud-box">
+                        <div class="hud-label">امتیاز</div>
+                        <div class="hud-value" id="sb-score">0</div>
+                    </div>
+                    <div class="hud-box">
+                        <div class="hud-label">رکورد</div>
+                        <div class="hud-value" id="sb-best">0</div>
+                    </div>
+                </div>
+
+                <div id="player">
+                    <div class="brow left"></div>
+                    <div class="brow right"></div>
+                    <div class="eye left"></div>
+                    <div class="eye right"></div>
+                    <div class="beak"></div>
+                </div>
+
+                <div id="objects"></div>
+
+                <div id="controls">
+                    <button class="control" id="sb-leftBtn">◀</button>
+                    <button class="control" id="sb-rightBtn">▶</button>
+                </div>
+
+                <div id="flash"></div>
+
+                <div id="gameOver">
+                    <div class="gameover-card">
+                        <div class="gameover-title">💥 Game Over</div>
+                        <div class="gameover-score">امتیاز: <b id="sb-finalScore">0</b></div>
+                        <div class="gameover-reward">🪙 جایزه: <b id="sb-reward">0</b> کوین</div>
+                        <div class="gameover-status" id="sb-scoreStatus"></div>
+                        <button id="sb-restart">🔄 دوباره بازی کن</button>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
     </div>
 
 </div>
 
-<div id="bottomNav">
-    <button class="navBtn active">
-        <span class="icon">🪙</span>
-        ضربه‌ای
-    </button>
-    <button class="navBtn" id="subwayBirdNav">
-        <span class="icon">🏃</span>
-        Subway Bird
-    </button>
-</div>
-
 <script>
 /* =========================================================
-   TELEGRAM
+   SHARED: Telegram, wallet, streak, screen switching
 ========================================================= */
 
 const tg = window.Telegram?.WebApp;
@@ -247,256 +646,732 @@ if(tg){
     tg.expand();
 }
 
-const user = tg?.initDataUnsafe?.user;
-const userId = user?.id || 0;
-const userName = user ? (user.first_name || user.username || "Player") : "Player";
-
-/* =========================================================
-   CONFIG
-========================================================= */
+const HUB_USER = tg?.initDataUnsafe?.user;
+const HUB_USER_ID = HUB_USER?.id || 0;
+const HUB_USER_NAME = HUB_USER
+    ? (HUB_USER.first_name || HUB_USER.username || "Player")
+    : "Player";
 
 const BOT_API_URL = "https://fwlkhy.onrender.com";
-
-// After this many un-saved taps, flush them to the server.
-const BATCH_SIZE = 20;
-
-// Also flush automatically at least this often (ms), so coins
-// aren't stuck in limbo if you stop tapping mid-batch.
-const FLUSH_INTERVAL_MS = 5000;
-
-const SUBWAY_BIRD_URL = "https://t-pk89.onrender.com";
-
-/* =========================================================
-   ELEMENTS
-========================================================= */
 
 const statusEl = document.getElementById("status");
 const walletValueEl = document.getElementById("walletValue");
 const streakValueEl = document.getElementById("streakValue");
-const sessionCoinsEl = document.getElementById("sessionCoins");
-const tapBtn = document.getElementById("tapBtn");
-const tapZone = document.getElementById("tapZone");
-const subwayBirdNav = document.getElementById("subwayBirdNav");
+const backBtn = document.getElementById("backBtn");
 
-/* =========================================================
-   STATE
-========================================================= */
+let hubWalletCoins = 0;
 
-let walletCoins = 0;      // last known server-confirmed balance
-let sessionCoins = 0;     // taps this session (may include unsaved)
-let pendingTaps = 0;      // taps not yet sent to the server
-let sending = false;
-
-/* =========================================================
-   STARTUP CHECKS
-========================================================= */
-
-if(!userId){
-
-    statusEl.textContent =
-        "⚠️ کاربر تلگرام شناسایی نشد — این بازی رو باید از داخل " +
-        "خود تلگرام (دکمه منو یا /play) باز کنی.";
-
-    tapBtn.disabled = true;
-    tapBtn.style.opacity = ".4";
-
-}else{
-
-    init();
+function setStatus(text){
+    statusEl.textContent = text;
 }
 
-async function init(){
+function updateWalletDisplay(){
+    walletValueEl.textContent = hubWalletCoins;
+}
 
-    statusEl.textContent = "در حال اتصال...";
+function addCoinsLocally(amount){
+    hubWalletCoins += amount;
+    updateWalletDisplay();
+}
+
+async function initWallet(){
+
+    if(!HUB_USER_ID){
+        setStatus(
+            "⚠️ کاربر تلگرام شناسایی نشد — این صفحه رو باید از داخل " +
+            "خود تلگرام (دکمه منو یا /play) باز کنی."
+        );
+        return;
+    }
+
+    setStatus("در حال اتصال...");
 
     try{
 
-        const balanceRes = await fetch(
-            `${BOT_API_URL}/balance?user_id=${userId}`
-        );
+        const balRes = await fetch(`${BOT_API_URL}/balance?user_id=${HUB_USER_ID}`);
+        const balData = await balRes.json();
 
-        const balanceData = await balanceRes.json();
-
-        if(balanceData.ok){
-            walletCoins = balanceData.coins;
-            walletValueEl.textContent = walletCoins;
-            streakValueEl.textContent = balanceData.streak || 0;
+        if(balData.ok){
+            hubWalletCoins = balData.coins;
+            updateWalletDisplay();
+            streakValueEl.textContent = balData.streak || 0;
         }
 
-        const checkinRes = await fetch(
-            `${BOT_API_URL}/checkin`,
-            {
-                method:"POST",
-                headers:{"Content-Type":"application/json"},
-                body:JSON.stringify({user_id:userId, name:userName})
-            }
-        );
+        const checkRes = await fetch(`${BOT_API_URL}/checkin`, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({user_id:HUB_USER_ID, name:HUB_USER_NAME})
+        });
 
-        const checkinData = await checkinRes.json();
+        const checkData = await checkRes.json();
 
-        if(checkinData.ok){
+        if(checkData.ok){
 
-            streakValueEl.textContent = checkinData.streak;
+            streakValueEl.textContent = checkData.streak;
 
-            if(checkinData.bonus_awarded > 0){
+            if(checkData.bonus_awarded > 0){
 
-                walletCoins += checkinData.bonus_awarded;
-                walletValueEl.textContent = walletCoins;
+                addCoinsLocally(checkData.bonus_awarded);
 
-                statusEl.textContent =
-                    `🔥 استریک ${checkinData.streak} روزه! ` +
-                    `+${checkinData.bonus_awarded} کوین جایزه‌ی امروز`;
+                setStatus(
+                    `🔥 استریک ${checkData.streak} روزه! ` +
+                    `+${checkData.bonus_awarded} کوین جایزه‌ی امروز`
+                );
 
             }else{
 
-                statusEl.textContent = "✅ متصل شد";
-
-                setTimeout(()=>{
-                    if(statusEl.textContent === "✅ متصل شد")
-                        statusEl.textContent = "";
-                }, 2000);
+                setStatus("");
             }
         }
 
     }catch(err){
 
-        statusEl.textContent =
-            "❌ اتصال به سرور برقرار نشد (شبکه یا CORS).";
-
-        console.error("init error:", err);
+        setStatus("❌ اتصال به سرور برقرار نشد (شبکه یا CORS).");
+        console.error("initWallet error:", err);
     }
 }
 
 /* =========================================================
-   TAP
+   SCREEN SWITCHING
 ========================================================= */
 
-tapBtn.addEventListener("pointerdown", e=>{
+let currentScreen = "menu";
 
-    if(!userId) return;
+function showScreen(name){
 
-    e.preventDefault();
+    document.querySelectorAll(".screen").forEach(el=>el.classList.remove("active"));
+    document.getElementById("screen-" + name).classList.add("active");
 
-    sessionCoins++;
-    pendingTaps++;
+    backBtn.style.display = (name === "menu") ? "none" : "flex";
+    backBtn.style.alignItems = "center";
+    backBtn.style.justifyContent = "center";
 
-    sessionCoinsEl.textContent = sessionCoins;
+    // stop whichever game we're leaving
+    if(currentScreen === "tap" && window.TapGame) window.TapGame.stop();
+    if(currentScreen === "reaction" && window.ReactionGame) window.ReactionGame.stop();
+    if(currentScreen === "subway" && window.SubwayBird) window.SubwayBird.stop();
 
-    tapZone.classList.remove("pulse");
-    void tapZone.offsetWidth;
-    tapZone.classList.add("pulse");
+    currentScreen = name;
 
-    spawnFloatingPlusOne(e);
+    // start the one we're entering
+    if(name === "tap" && window.TapGame) window.TapGame.start();
+    if(name === "reaction" && window.ReactionGame) window.ReactionGame.start();
+    if(name === "subway" && window.SubwayBird) window.SubwayBird.start();
+}
 
-    if(pendingTaps >= BATCH_SIZE){
-        flushTaps();
-    }
+backBtn.addEventListener("click", ()=>showScreen("menu"));
+
+document.querySelectorAll(".gameCard[data-game]").forEach(card=>{
+    card.addEventListener("click", ()=>{
+        showScreen(card.dataset.game);
+    });
 });
 
-function spawnFloatingPlusOne(e){
+window.addEventListener("load", initWallet);
+</script>
 
-    const rect = tapZone.getBoundingClientRect();
-
-    const x = (e.clientX ?? rect.left + rect.width/2) - rect.left;
-    const y = (e.clientY ?? rect.top + rect.height/2) - rect.top;
-
-    const el = document.createElement("div");
-
-    el.className = "floatup";
-    el.textContent = "+1";
-    el.style.left = x + "px";
-    el.style.top = y + "px";
-
-    tapZone.appendChild(el);
-
-    setTimeout(()=>el.remove(), 800);
-}
-
+<script>
 /* =========================================================
-   FLUSH TAPS TO SERVER
+   TAP GAME MODULE
 ========================================================= */
+(function(){
 
-async function flushTaps(){
+    const BATCH_SIZE = 20;
+    const FLUSH_INTERVAL_MS = 5000;
 
-    if(sending || pendingTaps <= 0 || !userId)
-        return;
+    const sessionCoinsEl = document.getElementById("tap-sessionCoins");
+    const tapBtn = document.getElementById("tap-btn");
+    const tapZone = document.getElementById("tap-zone");
 
-    const tapsToSend = pendingTaps;
-    pendingTaps = 0;
-    sending = true;
+    let sessionCoins = 0;
+    let pendingTaps = 0;
+    let sending = false;
+    let flushTimer = null;
 
-    try{
+    function onTap(e){
 
-        const res = await fetch(
-            `${BOT_API_URL}/tap`,
-            {
+        if(!HUB_USER_ID) return;
+
+        e.preventDefault();
+
+        sessionCoins++;
+        pendingTaps++;
+        sessionCoinsEl.textContent = sessionCoins;
+
+        tapZone.classList.remove("pulse");
+        void tapZone.offsetWidth;
+        tapZone.classList.add("pulse");
+
+        spawnFloatingPlusOne(e);
+
+        if(pendingTaps >= BATCH_SIZE) flushTaps();
+    }
+
+    function spawnFloatingPlusOne(e){
+
+        const rect = tapZone.getBoundingClientRect();
+        const x = (e.clientX ?? rect.left + rect.width/2) - rect.left;
+        const y = (e.clientY ?? rect.top + rect.height/2) - rect.top;
+
+        const el = document.createElement("div");
+        el.className = "floatup";
+        el.textContent = "+1";
+        el.style.left = x + "px";
+        el.style.top = y + "px";
+
+        tapZone.appendChild(el);
+        setTimeout(()=>el.remove(), 800);
+    }
+
+    async function flushTaps(){
+
+        if(sending || pendingTaps <= 0 || !HUB_USER_ID) return;
+
+        const taps = pendingTaps;
+        pendingTaps = 0;
+        sending = true;
+
+        try{
+
+            const res = await fetch(`${BOT_API_URL}/tap`, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({user_id:HUB_USER_ID, name:HUB_USER_NAME, taps})
+            });
+
+            const data = await res.json();
+
+            if(data.ok){
+                hubWalletCoins = data.coins;
+                updateWalletDisplay();
+                setStatus("");
+            }else{
+                pendingTaps += taps;
+                setStatus(`❌ ذخیره نشد: ${data.error || res.status}`);
+            }
+
+        }catch(err){
+
+            pendingTaps += taps;
+            setStatus("❌ اتصال قطع شد، دوباره تلاش می‌کنم...");
+            console.error("tap flush error:", err);
+
+        }finally{
+
+            sending = false;
+        }
+    }
+
+    document.addEventListener("visibilitychange", ()=>{
+        if(document.visibilityState === "hidden") flushTaps();
+    });
+
+    window.addEventListener("pagehide", flushTaps);
+
+    window.TapGame = {
+
+        start(){
+
+            if(!HUB_USER_ID){
+                tapBtn.disabled = true;
+                tapBtn.style.opacity = ".4";
+            }
+
+            tapBtn.addEventListener("pointerdown", onTap);
+            flushTimer = setInterval(flushTaps, FLUSH_INTERVAL_MS);
+        },
+
+        stop(){
+
+            tapBtn.removeEventListener("pointerdown", onTap);
+            clearInterval(flushTimer);
+            flushTaps();
+        }
+    };
+
+})();
+</script>
+
+<script>
+/* =========================================================
+   REACTION GAME MODULE
+========================================================= */
+(function(){
+
+    const box = document.getElementById("reaction-box");
+    const message = document.getElementById("reaction-message");
+    const resultEl = document.getElementById("reaction-result");
+    const bestEl = document.getElementById("reaction-best");
+    const startBtn = document.getElementById("reaction-startBtn");
+
+    let state = "idle"; // idle | waiting | go
+    let waitTimer = null;
+    let goTime = 0;
+
+    let best = Number(localStorage.getItem("angrycoin_reaction_best") || 0);
+
+    function updateBestDisplay(){
+        bestEl.textContent = best
+            ? `بهترین زمانت: ${best} میلی‌ثانیه`
+            : "بهترین زمانت: --";
+    }
+
+    updateBestDisplay();
+
+    function startRound(){
+
+        clearTimeout(waitTimer);
+
+        state = "waiting";
+
+        box.className = "wait";
+        message.textContent = "صبر کن... 🔴";
+        resultEl.textContent = "";
+        startBtn.style.display = "none";
+
+        const delay = 1200 + Math.random() * 2500;
+
+        waitTimer = setTimeout(()=>{
+            state = "go";
+            box.className = "go";
+            message.textContent = "بزن! 🟢";
+            goTime = performance.now();
+        }, delay);
+    }
+
+    async function onBoxTap(){
+
+        if(state === "idle") return;
+
+        if(state === "waiting"){
+
+            // false start
+            clearTimeout(waitTimer);
+            state = "idle";
+            box.className = "";
+            message.textContent = "زودتر از موعد! 😅";
+            resultEl.textContent = "دوباره امتحان کن";
+            startBtn.style.display = "block";
+            startBtn.textContent = "🔁 دوباره";
+            return;
+        }
+
+        if(state === "go"){
+
+            const reactionMs = Math.round(performance.now() - goTime);
+
+            state = "idle";
+            box.className = "";
+            message.textContent = `${reactionMs} میلی‌ثانیه`;
+
+            let reward = 0;
+
+            if(reactionMs < 250) reward = 5;
+            else if(reactionMs < 400) reward = 3;
+            else if(reactionMs < 600) reward = 1;
+
+            if(!best || reactionMs < best){
+                best = reactionMs;
+                localStorage.setItem("angrycoin_reaction_best", best);
+                updateBestDisplay();
+            }
+
+            if(reward > 0){
+
+                resultEl.textContent = `⏳ در حال ثبت +${reward} کوین...`;
+                await sendReward(reward);
+                resultEl.textContent = `🪙 +${reward} کوین گرفتی!`;
+
+            }else{
+
+                resultEl.textContent = "یکم آهسته بود، دوباره امتحان کن";
+            }
+
+            startBtn.style.display = "block";
+            startBtn.textContent = "🔁 دوباره";
+        }
+    }
+
+    async function sendReward(amount){
+
+        if(!HUB_USER_ID){
+            resultEl.textContent = "⚠️ کاربر تلگرام شناسایی نشد";
+            return;
+        }
+
+        try{
+
+            const res = await fetch(`${BOT_API_URL}/tap`, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({user_id:HUB_USER_ID, name:HUB_USER_NAME, taps:amount})
+            });
+
+            const data = await res.json();
+
+            if(data.ok){
+                hubWalletCoins = data.coins;
+                updateWalletDisplay();
+            }else{
+                resultEl.textContent = `❌ ذخیره نشد: ${data.error || res.status}`;
+            }
+
+        }catch(err){
+
+            resultEl.textContent = "❌ اتصال قطع شد";
+            console.error("reaction reward error:", err);
+        }
+    }
+
+    box.addEventListener("pointerdown", onBoxTap);
+    startBtn.addEventListener("click", startRound);
+
+    window.ReactionGame = {
+
+        start(){
+            state = "idle";
+            box.className = "";
+            message.textContent = "آماده‌ای؟";
+            resultEl.textContent = "";
+            startBtn.style.display = "block";
+            startBtn.textContent = "▶ شروع";
+        },
+
+        stop(){
+            clearTimeout(waitTimer);
+            state = "idle";
+        }
+    };
+
+})();
+</script>
+
+<script>
+/* =========================================================
+   SUBWAY BIRD MODULE (same game logic as the standalone build)
+========================================================= */
+(function(){
+
+    const GAME_ID = "subway_bird";
+    const COIN_MULTIPLIER = 5;
+
+    const gameEl = document.getElementById("game");
+    const road = document.getElementById("road");
+    const player = document.getElementById("player");
+    const objectsContainer = document.getElementById("objects");
+
+    const scoreEl = document.getElementById("sb-score");
+    const bestEl = document.getElementById("sb-best");
+
+    const gameOverEl = document.getElementById("gameOver");
+    const finalScoreEl = document.getElementById("sb-finalScore");
+    const rewardEl = document.getElementById("sb-reward");
+    const scoreStatusEl = document.getElementById("sb-scoreStatus");
+
+    const leftBtn = document.getElementById("sb-leftBtn");
+    const rightBtn = document.getElementById("sb-rightBtn");
+    const restartBtn = document.getElementById("sb-restart");
+    const flash = document.getElementById("flash");
+
+    let lane = 1;
+    let score = 0;
+    let speed = 5;
+    let running = false;
+    let objects = [];
+    let spawnTimer = null;
+    let animationId = null;
+    let touchStartX = 0;
+    let initialized = false;
+
+    let best = Number(localStorage.getItem("subway_bird_best") || 0);
+    bestEl.textContent = best;
+
+    function createCity(){
+        const city = document.getElementById("city");
+        city.innerHTML = "";
+        for(let i=0;i<24;i++){
+            const b = document.createElement("div");
+            b.className = "building";
+            b.style.height = (30 + Math.random()*65) + "%";
+            city.appendChild(b);
+        }
+    }
+
+    function createSpeedLines(){
+        for(let i=0;i<12;i++){
+            const line = document.createElement("div");
+            line.className = "speed-line";
+            line.style.left = (5 + Math.random()*90) + "%";
+            line.style.animationDelay = (-Math.random()*1.5) + "s";
+            line.style.animationDuration = (.35 + Math.random()*.5) + "s";
+            road.appendChild(line);
+        }
+    }
+
+    function updatePlayer(){
+        const roadWidth = road.clientWidth;
+        const laneWidth = roadWidth / 3;
+        const x = lane * laneWidth + laneWidth/2 - player.offsetWidth/2;
+        player.style.left = x + "px";
+        player.style.bottom = "100px";
+    }
+
+    function moveLeft(){
+        if(!running) return;
+        if(lane > 0){
+            lane--;
+            player.style.transform = "scale(.92) rotate(-5deg)";
+            setTimeout(()=>{ player.style.transform = "scale(1) rotate(0deg)"; },120);
+            updatePlayer();
+        }
+    }
+
+    function moveRight(){
+        if(!running) return;
+        if(lane < 2){
+            lane++;
+            player.style.transform = "scale(.92) rotate(5deg)";
+            setTimeout(()=>{ player.style.transform = "scale(1) rotate(0deg)"; },120);
+            updatePlayer();
+        }
+    }
+
+    leftBtn.addEventListener("pointerdown", e=>{ e.preventDefault(); moveLeft(); });
+    rightBtn.addEventListener("pointerdown", e=>{ e.preventDefault(); moveRight(); });
+
+    document.addEventListener("keydown", e=>{
+        if(currentScreen !== "subway") return;
+        if(e.key === "ArrowLeft") moveLeft();
+        if(e.key === "ArrowRight") moveRight();
+    });
+
+    gameEl.addEventListener("touchstart", e=>{
+        if(!e.touches.length) return;
+        touchStartX = e.touches[0].clientX;
+    },{passive:true});
+
+    gameEl.addEventListener("touchend", e=>{
+        if(!e.changedTouches.length) return;
+        const diff = e.changedTouches[0].clientX - touchStartX;
+        if(Math.abs(diff) < 30) return;
+        if(diff < 0) moveLeft(); else moveRight();
+    },{passive:true});
+
+    function spawnObject(){
+        if(!running) return;
+
+        const laneIndex = Math.floor(Math.random()*3);
+        const isCoin = Math.random() < .65;
+
+        const obj = document.createElement("div");
+        obj.className = isCoin ? "coin" : "obstacle";
+
+        const laneWidth = road.clientWidth / 3;
+        const width = isCoin ? 34 : 48;
+        const x = laneIndex * laneWidth + laneWidth/2 - width/2;
+
+        obj.style.left = x + "px";
+        obj.style.top = "-80px";
+
+        objectsContainer.appendChild(obj);
+
+        objects.push({el:obj, lane:laneIndex, y:-80, type:isCoin?"coin":"obstacle", hit:false});
+    }
+
+    function collision(a,b){
+        const r1 = a.getBoundingClientRect();
+        const r2 = b.getBoundingClientRect();
+        return !(r1.right < r2.left+8 || r1.left > r2.right-8 || r1.bottom < r2.top+8 || r1.top > r2.bottom-8);
+    }
+
+    function playCoinSound(){
+        try{
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(700, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + .08);
+            gain.gain.setValueAtTime(.12, ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(.001, ctx.currentTime + .15);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + .15);
+        }catch(e){}
+    }
+
+    function gameLoop(){
+
+        if(!running) return;
+
+        const roadHeight = road.clientHeight;
+
+        for(let i=objects.length-1;i>=0;i--){
+
+            const obj = objects[i];
+            obj.y += speed;
+            obj.el.style.top = obj.y + "px";
+
+            if(!obj.hit && obj.lane === lane && collision(player, obj.el)){
+
+                obj.hit = true;
+
+                if(obj.type === "coin"){
+
+                    score++;
+                    scoreEl.textContent = score;
+                    playCoinSound();
+                    obj.el.remove();
+                    objects.splice(i,1);
+
+                    if(score > best){
+                        best = score;
+                        bestEl.textContent = best;
+                        localStorage.setItem("subway_bird_best", best);
+                    }
+
+                    speed = Math.min(10, 5 + score*.04);
+
+                }else{
+                    endGame();
+                    return;
+                }
+            }
+
+            if(obj.y > roadHeight + 100){
+                obj.el.remove();
+                objects.splice(i,1);
+            }
+        }
+
+        animationId = requestAnimationFrame(gameLoop);
+    }
+
+    function startSpawner(){
+        clearInterval(spawnTimer);
+        spawnTimer = setInterval(spawnObject, 650);
+    }
+
+    function startGame(){
+
+        clearInterval(spawnTimer);
+        cancelAnimationFrame(animationId);
+
+        objects.forEach(o=>o.el.remove());
+        objects = [];
+
+        score = 0;
+        speed = 5;
+        lane = 1;
+        running = true;
+
+        scoreEl.textContent = "0";
+        gameOverEl.style.display = "none";
+        scoreStatusEl.textContent = "";
+        flash.classList.remove("flash");
+
+        updatePlayer();
+        startSpawner();
+        gameLoop();
+    }
+
+    async function endGame(){
+
+        if(!running) return;
+
+        running = false;
+        clearInterval(spawnTimer);
+        cancelAnimationFrame(animationId);
+
+        flash.classList.remove("flash");
+        void flash.offsetWidth;
+        flash.classList.add("flash");
+
+        const reward = score * COIN_MULTIPLIER;
+
+        finalScoreEl.textContent = score;
+        rewardEl.textContent = reward;
+        gameOverEl.style.display = "flex";
+        scoreStatusEl.textContent = "⏳ در حال ارسال امتیاز...";
+
+        await sendScore(score);
+    }
+
+    async function sendScore(scoreValue){
+
+        try{
+
+            if(!HUB_USER_ID){
+                scoreStatusEl.textContent =
+                    "⚠️ کاربر تلگرام شناسایی نشد — از داخل تلگرام باز کن.";
+                return;
+            }
+
+            const response = await fetch(`${BOT_API_URL}/game-score`, {
                 method:"POST",
                 headers:{"Content-Type":"application/json"},
                 body:JSON.stringify({
-                    user_id:userId,
-                    name:userName,
-                    taps:tapsToSend
+                    user_id:HUB_USER_ID,
+                    name:HUB_USER_NAME,
+                    score:scoreValue,
+                    game_id:GAME_ID
                 })
+            });
+
+            const data = await response.json();
+
+            if(response.ok && data.ok){
+
+                addCoinsLocally(data.coins_awarded);
+
+                scoreStatusEl.textContent =
+                    `✅ ${data.coins_awarded} کوین به حسابت اضافه شد`;
+
+            }else{
+
+                scoreStatusEl.textContent =
+                    `❌ سرور خطا داد: ${data.error || response.status}`;
             }
-        );
 
-        const data = await res.json();
+        }catch(error){
 
-        if(data.ok){
+            scoreStatusEl.textContent =
+                "❌ اتصال به سرور برقرار نشد (شبکه یا CORS).";
 
-            walletCoins = data.coins;
-            walletValueEl.textContent = walletCoins;
-            statusEl.textContent = "";
-
-        }else{
-
-            // put the taps back so we retry later
-            pendingTaps += tapsToSend;
-
-            statusEl.textContent =
-                `❌ ذخیره نشد: ${data.error || res.status}`;
+            console.error("Score sending error:", error);
         }
-
-    }catch(err){
-
-        pendingTaps += tapsToSend;
-
-        statusEl.textContent =
-            "❌ اتصال قطع شد، دوباره تلاش می‌کنم...";
-
-        console.error("flush error:", err);
-
-    }finally{
-
-        sending = false;
     }
-}
 
-setInterval(flushTaps, FLUSH_INTERVAL_MS);
+    restartBtn.addEventListener("click", startGame);
 
-// try to flush before the page/app actually closes
-document.addEventListener("visibilitychange", ()=>{
-    if(document.visibilityState === "hidden"){
-        flushTaps();
-    }
-});
+    window.addEventListener("resize", ()=>{
+        if(currentScreen === "subway") updatePlayer();
+    });
 
-window.addEventListener("pagehide", flushTaps);
+    window.SubwayBird = {
 
-/* =========================================================
-   NAV (placeholder for more games)
-========================================================= */
+        start(){
 
-subwayBirdNav.addEventListener("click", ()=>{
+            if(!initialized){
+                createCity();
+                createSpeedLines();
+                initialized = true;
+            }
 
-    flushTaps();
+            setTimeout(updatePlayer, 50);
+            startGame();
+        },
 
-    if(tg && tg.openLink){
-        tg.openLink(SUBWAY_BIRD_URL);
-    }else{
-        window.location.href = SUBWAY_BIRD_URL;
-    }
-});
+        stop(){
+            running = false;
+            clearInterval(spawnTimer);
+            cancelAnimationFrame(animationId);
+        }
+    };
+
+})();
 </script>
 
 </body>

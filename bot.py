@@ -1,5 +1,6 @@
 import os
 import re
+import random
 import json
 import html
 import time
@@ -940,8 +941,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/disablequestion ID\n\n"
         "📈 مدیریت بازار:\n"
         "/setprice ANGRYCOIN 150\n"
-        "/setmarketgroup\n"
+        "/updateprice — تغییر فوری قیمت (رندوم)\n"
+        "/setmarketgroup — این گروه اعلان تغییر قیمت بگیره\n"
         "/unsetmarketgroup\n\n"
+        "قیمت AngryCoin هر چند دقیقه خودکار (رندوم) عوض می‌شه "
+        "و تو گروه‌های ثبت‌شده اعلام می‌شه.\n\n"
         "🛡 مدیریت گروه (فقط ادمین‌های گروه):\n"
         "/ban /unban /kick — با Reply\n"
         "/mute [دقیقه] /unmute — با Reply\n"
@@ -959,7 +963,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "هاپهاپ کوین\n\n"
         "📝 دستورات فارسی (بدون /):\n"
         "موجودی، برترین، بورس، پرتفوی، "
-        "خرید 10، فروش 10، کوییز، راهنما"
+        "خرید 10، فروش 10، کوییز، راهنما\n\n"
+        "📝 مدیریت گروه به فارسی (با Reply، فقط ادمین):\n"
+        "بن، آنبن، اخراج، سکوت [دقیقه]، رفع سکوت، "
+        "اخطار، حذف اخطار، اخطارها\n"
+        "قفل [نوع]، بازکردن [نوع]، قفل‌ها\n"
+        "فیلتر [کلمه]، حذف فیلتر [کلمه]، فیلترها\n"
+        "خوشامد روشن/خاموش، تنظیم خوشامد [متن]\n"
+        "ضدفلود روشن/خاموش، تنظیم فلود [عدد] [عدد]"
     )
 
     await update.message.reply_text(text)
@@ -1059,6 +1070,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "رکورد": gametop,
         "بازی": play,
         "بازی کن": play,
+        "بن": ban_command,
+        "بن کن": ban_command,
+        "آنبن": unban_command,
+        "رفع بن": unban_command,
+        "اخراج": kick_command,
+        "رفع سکوت": unmute_command,
+        "اخطار": warn_command,
+        "حذف اخطار": unwarn_command,
+        "اخطارها": warns_command,
+        "اخطارهام": warns_command,
+        "قفل ها": locks_command,
+        "قفل‌ها": locks_command,
+        "وضعیت قفل": locks_command,
+        "فیلترها": filters_command,
+        "لیست فیلتر": filters_command,
+        "بروزرسانی قیمت": updateprice_command,
+        "تغییر قیمت": updateprice_command,
     }
 
     if text in NO_ARG_COMMANDS:
@@ -1077,6 +1105,67 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await sell(update, context)
 
+        return
+
+    # ---------------------------------------------------------
+    # Persian group-moderation commands (admin-only — each of these
+    # handlers checks is_group_admin itself and silently no-ops for
+    # regular users, so it's safe to match on plain Persian words)
+    # ---------------------------------------------------------
+
+    mute_match = re.match(r"^سکوت(?:\s+(\d+))?$", text)
+    if mute_match:
+        minutes = mute_match.group(1)
+        context.args = [minutes] if minutes else []
+        await mute_command(update, context)
+        return
+
+    lock_match = re.match(r"^قفل\s+(.+)$", text)
+    if lock_match:
+        context.args = [lock_match.group(1)]
+        await lock_command(update, context)
+        return
+
+    unlock_match = re.match(r"^(?:باز\s*کردن|بازکردن)\s+(.+)$", text)
+    if unlock_match:
+        context.args = [unlock_match.group(1)]
+        await unlock_command(update, context)
+        return
+
+    filter_match = re.match(r"^فیلتر\s+(.+)$", text)
+    if filter_match:
+        context.args = [filter_match.group(1)]
+        await filter_command(update, context)
+        return
+
+    unfilter_match = re.match(r"^حذف\s*فیلتر\s+(.+)$", text)
+    if unfilter_match:
+        context.args = [unfilter_match.group(1)]
+        await unfilter_command(update, context)
+        return
+
+    welcome_toggle_match = re.match(r"^خوشامد\s+(روشن|خاموش)$", text)
+    if welcome_toggle_match:
+        context.args = [welcome_toggle_match.group(1)]
+        await welcome_toggle_command(update, context)
+        return
+
+    setwelcome_match = re.match(r"^تنظیم\s*خوشامد\s+(.+)$", text)
+    if setwelcome_match:
+        context.args = setwelcome_match.group(1).split()
+        await setwelcome_command(update, context)
+        return
+
+    antiflood_toggle_match = re.match(r"^ضدفلود\s+(روشن|خاموش)$", text)
+    if antiflood_toggle_match:
+        context.args = [antiflood_toggle_match.group(1)]
+        await antiflood_toggle_command(update, context)
+        return
+
+    setflood_match = re.match(r"^تنظیم\s*فلود\s+(\d+)\s+(\d+)$", text)
+    if setflood_match:
+        context.args = [setflood_match.group(1), setflood_match.group(2)]
+        await setflood_command(update, context)
         return
 
     if text not in ["فولک", "هاپهاپ کوین"]:
@@ -2727,6 +2816,165 @@ async def unsetmarketgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
+# AUTOMATIC RANDOM PRICING
+# Every PRICE_UPDATE_INTERVAL_SECONDS, nudges the ANGRYCOIN price
+# up or down by a random percentage and announces the change in
+# every group registered via /setmarketgroup.
+# =========================================================
+
+PRICE_UPDATE_INTERVAL_SECONDS = int(
+    os.environ.get("MARKET_UPDATE_MINUTES", "15")
+) * 60
+
+PRICE_CHANGE_MIN_PERCENT = -15
+PRICE_CHANGE_MAX_PERCENT = 20
+
+
+def _update_market_price_db():
+    """Randomly nudges the ANGRYCOIN price. Returns (old_price,
+    new_price), or None if the market row doesn't exist yet."""
+
+    conn = get_conn()
+
+    try:
+
+        cur = conn.cursor()
+
+        cur.execute("SELECT price FROM market WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'")
+        row = cur.fetchone()
+
+        if not row:
+            cur.close()
+            return None
+
+        old_price = row[0]
+
+        pct = random.uniform(PRICE_CHANGE_MIN_PERCENT, PRICE_CHANGE_MAX_PERCENT)
+        new_price = max(1, round(old_price * (1 + pct / 100)))
+
+        cur.execute(
+            "UPDATE market SET price = %s WHERE UPPER(TRIM(symbol)) = 'ANGRYCOIN'",
+            (new_price,)
+        )
+
+        cur.execute("""
+            INSERT INTO market_history (symbol, price, created_at)
+            VALUES (%s, %s, %s)
+        """, ("ANGRYCOIN", new_price, time.time()))
+
+        conn.commit()
+        cur.close()
+
+        return old_price, new_price
+
+    except Exception:
+
+        conn.rollback()
+        raise
+
+    finally:
+
+        put_conn(conn)
+
+
+def _get_market_groups_db():
+
+    conn = get_conn()
+
+    try:
+
+        cur = conn.cursor()
+        cur.execute("SELECT chat_id FROM market_groups")
+        rows = [r[0] for r in cur.fetchall()]
+        cur.close()
+
+        return rows
+
+    finally:
+
+        put_conn(conn)
+
+
+def _format_price_change_message(old_price, new_price):
+
+    diff = new_price - old_price
+    pct = (diff / old_price * 100) if old_price else 0
+
+    if diff > 0:
+        arrow = "📈"
+    elif diff < 0:
+        arrow = "📉"
+    else:
+        arrow = "➖"
+
+    sign = "+" if diff >= 0 else ""
+
+    return (
+        f"{arrow} قیمت AngryCoin تغییر کرد!\n\n"
+        f"قیمت قبلی: {old_price}\n"
+        f"قیمت جدید: {new_price}\n"
+        f"تغییر: {sign}{diff} ({sign}{pct:.1f}٪)"
+    )
+
+
+async def _broadcast_price_change(application, old_price, new_price):
+
+    text = _format_price_change_message(old_price, new_price)
+    groups = await run_db(_get_market_groups_db)
+
+    for chat_id in groups:
+        try:
+            await application.bot.send_message(chat_id=chat_id, text=text)
+        except Exception as e:
+            logger.warning("Could not send price update to %s: %s", chat_id, e)
+
+
+async def market_price_updater_loop(application):
+    """Runs forever in the background (started from post_init, so it
+    shares the same event loop run_polling uses — no extra thread,
+    no APScheduler/JobQueue dependency needed)."""
+
+    while True:
+
+        await asyncio.sleep(PRICE_UPDATE_INTERVAL_SECONDS)
+
+        try:
+
+            result = await run_db(_update_market_price_db)
+
+            if not result:
+                continue
+
+            old_price, new_price = result
+
+            await _broadcast_price_change(application, old_price, new_price)
+
+        except Exception:
+
+            logger.exception("Market price updater error")
+
+
+async def updateprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: trigger an immediate random price change, instead
+    of waiting for the next scheduled interval — handy for testing."""
+
+    if not is_admin(update.effective_user.id):
+        return
+
+    result = await run_db(_update_market_price_db)
+
+    if not result:
+        await update.message.reply_text("❌ بازار موجود نیست.")
+        return
+
+    old_price, new_price = result
+
+    await update.message.reply_text(_format_price_change_message(old_price, new_price))
+
+    await _broadcast_price_change(context.application, old_price, new_price)
+
+
+# =========================================================
 # GAME SCORE API (Flask — runs in its own thread already,
 # so it does NOT need run_db; it's fine to be blocking here)
 # =========================================================
@@ -4179,7 +4427,19 @@ def main():
     Thread(target=run_flask, daemon=True).start()
     Thread(target=self_ping_loop, daemon=True).start()
 
-    application = Application.builder().token(TOKEN).build()
+    async def on_startup(app):
+        # Runs once, inside the same event loop run_polling uses.
+        # Schedules the background price-fluctuation loop without
+        # needing the JobQueue/APScheduler extra.
+        asyncio.create_task(market_price_updater_loop(app))
+
+    application = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .post_init(on_startup)
+        .build()
+    )
 
     # BASIC
     application.add_handler(CommandHandler("start", start))
@@ -4216,6 +4476,7 @@ def main():
     application.add_handler(CommandHandler("setmarketgroup", setmarketgroup))
     application.add_handler(CommandHandler("unsetmarketgroup", unsetmarketgroup))
     application.add_handler(CommandHandler("setprice", setprice))
+    application.add_handler(CommandHandler("updateprice", updateprice_command))
 
     # GAME
     application.add_handler(CommandHandler("play", play))

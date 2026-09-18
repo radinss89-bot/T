@@ -21,6 +21,7 @@ from telegram import (
 from telegram.ext import (
     Application,
     ApplicationHandlerStop,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -1087,6 +1088,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "لیست فیلتر": filters_command,
         "بروزرسانی قیمت": updateprice_command,
         "تغییر قیمت": updateprice_command,
+        "پنل": panel_command,
     }
 
     if text in NO_ARG_COMMANDS:
@@ -2975,6 +2977,156 @@ async def updateprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # =========================================================
+# ADMIN PANEL (inline "glass" buttons — like DigiAnti's menu)
+# =========================================================
+# Each entry: (callback_data, button_label, implemented?)
+# "implemented" entries show real command help; the rest show an
+# honest "coming soon" instead of pretending the feature exists.
+
+PANEL_CATEGORIES = [
+    ("panel_locks",     "🔒 مدیریت قفل‌ها",        True),
+    ("panel_users",     "👮 مجازات کاربران",        True),
+    ("panel_promote",   "⬆️ ارتقا و عزل کاربران",   False),
+    ("panel_filter",    "🚫 فیلتر کلمات",           True),
+    ("panel_purge",     "🧹 پاکسازی",               False),
+    ("panel_welcome",   "👋 خوش‌آمدگویی",           True),
+    ("panel_forcejoin", "📢 عضویت اجباری",          False),
+    ("panel_forceadd",  "➕ اد اجباری",             False),
+    ("panel_flood",     "🌊 ضدفلود",                True),
+    ("panel_stats",     "📊 آمار فعالیت‌ها",        False),
+    ("panel_autoreply", "🤖 پاسخ خودکار",           False),
+    ("panel_market",    "📈 بازار AngryCoin",       True),
+    ("panel_fun",       "🎮 سرگرمی و کاربردی",      True),
+    ("panel_userpanel", "👤 پنل کاربر",             False),
+    ("panel_settings",  "⚙️ تنظیمات عمومی",         False),
+]
+
+PANEL_CONTENT = {
+    "panel_locks": (
+        "🔒 مدیریت قفل‌ها\n\n"
+        "/lock نوع — قفل کردن\n"
+        "/unlock نوع — باز کردن\n"
+        "/locks — وضعیت فعلی\n\n"
+        "انواع: link, forward, username, photo, video, sticker, "
+        "gif, voice, document, location, poll, contact\n\n"
+        "یا فارسی: «قفل لینک»، «بازکردن لینک»، «قفل‌ها»"
+    ),
+    "panel_users": (
+        "👮 مجازات کاربران\n\n"
+        "/ban /unban /kick — با Reply\n"
+        "/mute [دقیقه] /unmute — با Reply\n"
+        "/warn /unwarn /warns — با Reply\n\n"
+        "یا فارسی (با Reply): «بن»، «اخراج»، «سکوت 30»، "
+        "«رفع سکوت»، «اخطار»، «حذف اخطار»، «اخطارها»"
+    ),
+    "panel_filter": (
+        "🚫 فیلتر کلمات\n\n"
+        "/filter کلمه — اضافه کردن\n"
+        "/unfilter کلمه — حذف\n"
+        "/filters — لیست\n\n"
+        "یا فارسی: «فیلتر کلمه»، «حذف فیلتر کلمه»، «فیلترها»"
+    ),
+    "panel_welcome": (
+        "👋 خوش‌آمدگویی\n\n"
+        "/setwelcome متن — {name} جای اسم کاربر میاد\n"
+        "/welcome on|off\n\n"
+        "یا فارسی: «تنظیم خوشامد متن...»، «خوشامد روشن/خاموش»"
+    ),
+    "panel_flood": (
+        "🌊 ضدفلود (پیام رگباری)\n\n"
+        "/antiflood on|off\n"
+        "/setflood تعداد ثانیه — مثال: /setflood 5 10\n"
+        "(بیشتر از ۵ پیام تو ۱۰ ثانیه = ۱ دقیقه سکوت خودکار)\n\n"
+        "یا فارسی: «ضدفلود روشن/خاموش»، «تنظیم فلود 5 10»"
+    ),
+    "panel_market": (
+        "📈 بازار AngryCoin\n\n"
+        "/market /buy /sell /portfolio\n"
+        "/setprice /updateprice\n"
+        "/setmarketgroup /unsetmarketgroup\n\n"
+        "قیمت هر چند دقیقه خودکار و رندوم تغییر می‌کنه و "
+        "تو گروه‌های ثبت‌شده اعلام می‌شه."
+    ),
+    "panel_fun": (
+        "🎮 سرگرمی و کاربردی\n\n"
+        "/quiz — سوال کوییز\n"
+        "/play — بازی AngryCoin (Web App)\n"
+        "برای گرفتن کوین هم بنویس «فولک»"
+    ),
+}
+
+COMING_SOON_LABELS = {
+    data: label
+    for data, label, implemented in PANEL_CATEGORIES
+    if not implemented
+}
+
+
+def build_panel_keyboard():
+
+    rows = []
+    row = []
+
+    for data, label, implemented in PANEL_CATEGORIES:
+        row.append(InlineKeyboardButton(label, callback_data=data))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+
+    if row:
+        rows.append(row)
+
+    return InlineKeyboardMarkup(rows)
+
+
+PANEL_INTRO_TEXT = "📋 راهنمای ربات\n\nیه بخش رو انتخاب کن:"
+
+
+async def panel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    chat = update.effective_chat
+    user = update.effective_user
+
+    allowed = False
+
+    if chat.type == "private" and is_admin(user.id):
+        allowed = True
+    elif chat.type in ("group", "supergroup") and await is_group_admin(update, context):
+        allowed = True
+
+    if not allowed:
+        return
+
+    await update.message.reply_text(
+        PANEL_INTRO_TEXT,
+        reply_markup=build_panel_keyboard()
+    )
+
+
+async def panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    back_keyboard = InlineKeyboardMarkup(
+        [[InlineKeyboardButton("🔙 بازگشت", callback_data="panel_back")]]
+    )
+
+    if data == "panel_back":
+        await query.edit_message_text(PANEL_INTRO_TEXT, reply_markup=build_panel_keyboard())
+        return
+
+    if data in COMING_SOON_LABELS:
+        label = COMING_SOON_LABELS[data]
+        text = f"{label}\n\n🚧 این بخش هنوز اضافه نشده — به‌زودی."
+    else:
+        text = PANEL_CONTENT.get(data, "❌ یافت نشد.")
+
+    await query.edit_message_text(text, reply_markup=back_keyboard)
+
+
+# =========================================================
 # GAME SCORE API (Flask — runs in its own thread already,
 # so it does NOT need run_db; it's fine to be blocking here)
 # =========================================================
@@ -4477,6 +4629,8 @@ def main():
     application.add_handler(CommandHandler("unsetmarketgroup", unsetmarketgroup))
     application.add_handler(CommandHandler("setprice", setprice))
     application.add_handler(CommandHandler("updateprice", updateprice_command))
+    application.add_handler(CommandHandler("panel", panel_command))
+    application.add_handler(CallbackQueryHandler(panel_callback, pattern="^panel_"))
 
     # GAME
     application.add_handler(CommandHandler("play", play))

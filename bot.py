@@ -22,6 +22,7 @@ from telegram.ext import (
     Application,
     ApplicationHandlerStop,
     CallbackQueryHandler,
+    ChatMemberHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
@@ -412,6 +413,30 @@ EXPECTED_SCHEMA = {
         "antiflood_enabled": "BOOLEAN DEFAULT FALSE",
         "antiflood_limit": "INTEGER DEFAULT 5",
         "antiflood_window": "INTEGER DEFAULT 10",
+        "forcejoin_channel": "TEXT",
+        "forceadd_required": "INTEGER DEFAULT 0",
+    },
+    "group_members": {
+        "chat_id": "BIGINT",
+        "user_id": "BIGINT",
+        "username": "TEXT",
+        "first_name": "TEXT",
+    },
+    "invite_counts": {
+        "chat_id": "BIGINT",
+        "user_id": "BIGINT",
+        "count": "INTEGER DEFAULT 0",
+    },
+    "activity_stats": {
+        "chat_id": "BIGINT",
+        "user_id": "BIGINT",
+        "message_count": "INTEGER DEFAULT 0",
+    },
+    "auto_replies": {
+        "id": None,
+        "chat_id": "BIGINT",
+        "keyword": "TEXT",
+        "response": "TEXT",
     },
     "filtered_words": {
         "id": None,
@@ -530,6 +555,9 @@ def _migrate_existing_tables(conn, cur):
     _add_composite_unique_if_missing(conn, cur, "market_holdings", ["user_id", "symbol"])
     _add_composite_unique_if_missing(conn, cur, "quiz_answers", ["poll_id", "user_id"])
     _add_composite_unique_if_missing(conn, cur, "warnings", ["chat_id", "user_id"])
+    _add_composite_unique_if_missing(conn, cur, "group_members", ["chat_id", "user_id"])
+    _add_composite_unique_if_missing(conn, cur, "invite_counts", ["chat_id", "user_id"])
+    _add_composite_unique_if_missing(conn, cur, "activity_stats", ["chat_id", "user_id"])
 
 
 def _ensure_default_market_row():
@@ -716,6 +744,43 @@ def init_db():
                 user_id BIGINT,
                 count INTEGER DEFAULT 0,
                 PRIMARY KEY (chat_id, user_id)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS group_members (
+                chat_id BIGINT,
+                user_id BIGINT,
+                username TEXT,
+                first_name TEXT,
+                PRIMARY KEY (chat_id, user_id)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS invite_counts (
+                chat_id BIGINT,
+                user_id BIGINT,
+                count INTEGER DEFAULT 0,
+                PRIMARY KEY (chat_id, user_id)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS activity_stats (
+                chat_id BIGINT,
+                user_id BIGINT,
+                message_count INTEGER DEFAULT 0,
+                PRIMARY KEY (chat_id, user_id)
+            )
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS auto_replies (
+                id SERIAL PRIMARY KEY,
+                chat_id BIGINT,
+                keyword TEXT,
+                response TEXT
             )
         """)
 
@@ -957,21 +1022,35 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/filter کلمه /unfilter کلمه /filters\n"
         "/setwelcome متن — {name}=اسم کاربر\n"
         "/welcome on|off\n"
-        "/antiflood on|off /setflood 5 10\n\n"
+        "/antiflood on|off /setflood 5 10\n"
+        "/promote /demote — با Reply\n"
+        "/purge — با Reply، پاکسازی تا اینجا\n"
+        "/tagall [متن] — تگ همه‌ی اعضای شناخته‌شده\n"
+        "/setforcejoin @channel /unsetforcejoin\n"
+        "/setforceadd عدد /myinvite\n"
+        "/stats — فعال‌ترین اعضا\n"
+        "/addreply کلمه | پاسخ /delreply کلمه /replies\n"
+        "/mypanel — خلاصه‌ی وضعیت خودت\n"
+        "/panel — منوی کامل با دکمه‌های شیشه‌ای\n\n"
         "🐦 برای گرفتن کوین هم بنویس:\n"
         "فولک\n"
         "یا\n"
         "هاپهاپ کوین\n\n"
         "📝 دستورات فارسی (بدون /):\n"
         "موجودی، برترین، بورس، پرتفوی، "
-        "خرید 10، فروش 10، کوییز، راهنما\n\n"
+        "خرید 10، فروش 10، کوییز، راهنما، پنل\n\n"
         "📝 مدیریت گروه به فارسی (با Reply، فقط ادمین):\n"
         "بن، آنبن، اخراج، سکوت [دقیقه]، رفع سکوت، "
         "اخطار، حذف اخطار، اخطارها\n"
         "قفل [نوع]، بازکردن [نوع]، قفل‌ها\n"
         "فیلتر [کلمه]، حذف فیلتر [کلمه]، فیلترها\n"
         "خوشامد روشن/خاموش، تنظیم خوشامد [متن]\n"
-        "ضدفلود روشن/خاموش، تنظیم فلود [عدد] [عدد]"
+        "ضدفلود روشن/خاموش، تنظیم فلود [عدد] [عدد]\n"
+        "ارتقا، عزل، پاکسازی، تگ همه، همه\n"
+        "تنظیم عضویت اجباری [@channel]، غیرفعال عضویت اجباری\n"
+        "تنظیم اد اجباری [عدد]، دعوت من\n"
+        "آمار، آمار فعالیت، پنل من\n"
+        "تنظیم پاسخ [کلمه] | [پاسخ]، حذف پاسخ [کلمه]، پاسخ‌ها"
     )
 
     await update.message.reply_text(text)
@@ -1089,6 +1168,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "بروزرسانی قیمت": updateprice_command,
         "تغییر قیمت": updateprice_command,
         "پنل": panel_command,
+        "ارتقا": promote_command,
+        "عزل": demote_command,
+        "پاکسازی": purge_command,
+        "تگ همه": tagall_command,
+        "همه": tagall_command,
+        "دعوت من": myinvite_command,
+        "لینک دعوت من": myinvite_command,
+        "پنل من": mypanel_command,
+        "آمار فعالیت": activitystats_command,
+        "آمار": activitystats_command,
+        "پاسخ ها": replies_command,
+        "پاسخ‌ها": replies_command,
+        "لیست پاسخ": replies_command,
+        "غیرفعال عضویت اجباری": unsetforcejoin_command,
     }
 
     if text in NO_ARG_COMMANDS:
@@ -1169,6 +1262,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.args = [setflood_match.group(1), setflood_match.group(2)]
         await setflood_command(update, context)
         return
+
+    forcejoin_match = re.match(r"^تنظیم\s*عضویت\s*اجباری\s+(.+)$", text)
+    if forcejoin_match:
+        context.args = [forcejoin_match.group(1)]
+        await setforcejoin_command(update, context)
+        return
+
+    forceadd_match = re.match(r"^تنظیم\s*اد\s*اجباری\s+(\d+)$", text)
+    if forceadd_match:
+        context.args = [forceadd_match.group(1)]
+        await setforceadd_command(update, context)
+        return
+
+    if re.match(r"^(پاسخ\s*خودکار\s*اضافه|تنظیم\s*پاسخ)\b", text):
+        await addreply_command(update, context)
+        return
+
+    delreply_match = re.match(r"^حذف\s*پاسخ\s+(.+)$", text)
+    if delreply_match:
+        context.args = [delreply_match.group(1)]
+        await delreply_command(update, context)
+        return
+
+    # ---------------------------------------------------------
+    # Auto-reply keywords (admin-configured per group) — checked
+    # for everyone, not just admins, since anyone can trigger one.
+    # ---------------------------------------------------------
+
+    if update.effective_chat.type in ("group", "supergroup"):
+
+        auto_reply = await run_db(_match_auto_reply_db, update.effective_chat.id, text)
+
+        if auto_reply:
+            await update.message.reply_text(auto_reply)
+            return
 
     if text not in ["فولک", "هاپهاپ کوین"]:
         return
@@ -2986,19 +3114,20 @@ async def updateprice_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 PANEL_CATEGORIES = [
     ("panel_locks",     "🔒 مدیریت قفل‌ها",        True),
     ("panel_users",     "👮 مجازات کاربران",        True),
-    ("panel_promote",   "⬆️ ارتقا و عزل کاربران",   False),
+    ("panel_promote",   "⬆️ ارتقا و عزل کاربران",   True),
     ("panel_filter",    "🚫 فیلتر کلمات",           True),
-    ("panel_purge",     "🧹 پاکسازی",               False),
+    ("panel_purge",     "🧹 پاکسازی",               True),
     ("panel_welcome",   "👋 خوش‌آمدگویی",           True),
-    ("panel_forcejoin", "📢 عضویت اجباری",          False),
-    ("panel_forceadd",  "➕ اد اجباری",             False),
+    ("panel_forcejoin", "📢 عضویت اجباری",          True),
+    ("panel_forceadd",  "➕ اد اجباری",             True),
     ("panel_flood",     "🌊 ضدفلود",                True),
-    ("panel_stats",     "📊 آمار فعالیت‌ها",        False),
-    ("panel_autoreply", "🤖 پاسخ خودکار",           False),
+    ("panel_stats",     "📊 آمار فعالیت‌ها",        True),
+    ("panel_autoreply", "🤖 پاسخ خودکار",           True),
     ("panel_market",    "📈 بازار AngryCoin",       True),
     ("panel_fun",       "🎮 سرگرمی و کاربردی",      True),
-    ("panel_userpanel", "👤 پنل کاربر",             False),
-    ("panel_settings",  "⚙️ تنظیمات عمومی",         False),
+    ("panel_userpanel", "👤 پنل کاربر",             True),
+    ("panel_settings",  "⚙️ تنظیمات عمومی",         True),
+    ("panel_tagall",    "📣 تگ کردن همه",           True),
 ]
 
 PANEL_CONTENT = {
@@ -3052,6 +3181,61 @@ PANEL_CONTENT = {
         "/quiz — سوال کوییز\n"
         "/play — بازی AngryCoin (Web App)\n"
         "برای گرفتن کوین هم بنویس «فولک»"
+    ),
+    "panel_promote": (
+        "⬆️ ارتقا و عزل کاربران\n\n"
+        "/promote — با Reply، ادمین می‌کنه\n"
+        "/demote — با Reply، عزل می‌کنه\n\n"
+        "یا فارسی (با Reply): «ارتقا»، «عزل»"
+    ),
+    "panel_purge": (
+        "🧹 پاکسازی\n\n"
+        "روی پیامی که می‌خوای پاکسازی از اونجا شروع بشه Reply کن و بنویس:\n"
+        "/purge  یا  «پاکسازی»\n\n"
+        "همه‌ی پیام‌های بین اون پیام تا پیام فعلی پاک می‌شن "
+        "(حداکثر ۳۰۰ پیام یکجا)."
+    ),
+    "panel_forcejoin": (
+        "📢 عضویت اجباری\n\n"
+        "/setforcejoin @channelusername — فعال کردن\n"
+        "/unsetforcejoin — غیرفعال کردن\n\n"
+        "یا فارسی: «تنظیم عضویت اجباری @channel»، «غیرفعال عضویت اجباری»\n\n"
+        "⚠️ ربات باید عضو همون کانال باشه تا بتونه عضویت رو چک کنه."
+    ),
+    "panel_forceadd": (
+        "➕ اد اجباری\n\n"
+        "/setforceadd عدد — مثلاً /setforceadd 3 (۰ = غیرفعال)\n"
+        "/myinvite — گرفتن لینک دعوت شخصی\n\n"
+        "یا فارسی: «تنظیم اد اجباری 3»، «دعوت من»\n\n"
+        "کاربرایی که به حد نصاب نرسیده باشن نمی‌تونن پیام بدن."
+    ),
+    "panel_stats": (
+        "📊 آمار فعالیت‌ها\n\n"
+        "/stats — ۱۰ نفر فعال‌تر این گروه بر اساس تعداد پیام\n\n"
+        "یا فارسی: «آمار» یا «آمار فعالیت»"
+    ),
+    "panel_autoreply": (
+        "🤖 پاسخ خودکار\n\n"
+        "/addreply کلمه | پاسخ — اضافه کردن\n"
+        "/delreply کلمه — حذف\n"
+        "/replies — لیست کلمات\n\n"
+        "یا فارسی: «تنظیم پاسخ کلمه | پاسخ»، «حذف پاسخ کلمه»، «پاسخ‌ها»"
+    ),
+    "panel_userpanel": (
+        "👤 پنل کاربر\n\n"
+        "/mypanel — خلاصه‌ی وضعیت خودت (کوین، اخطار، دعوت، پیام)\n\n"
+        "یا فارسی: «پنل من»"
+    ),
+    "panel_tagall": (
+        "📣 تگ کردن همه\n\n"
+        "/tagall [متن دلخواه] — تگ همه‌ی اعضایی که تا الان تو گروه "
+        "پیام دادن (فقط همینا شناخته شده‌ن)\n\n"
+        "یا فارسی: «تگ همه» یا «همه»"
+    ),
+    "panel_settings": (
+        "⚙️ تنظیمات عمومی — فهرست کامل دستورات مدیریتی\n\n"
+        "برای دیدن جزئیات هر بخش، از همین پنل روی دکمه‌ی مربوطه بزن، "
+        "یا /help رو تو PV بزن."
     ),
 }
 
@@ -3618,1069 +3802,4 @@ LOCK_LABELS_FA = {
     "gif": "گیف",
     "voice": "صدا",
     "document": "فایل",
-    "location": "موقعیت مکانی",
-    "poll": "نظرسنجی",
-    "contact": "مخاطب",
-}
-
-LOCK_ALIASES_FA = {v: k for k, v in LOCK_LABELS_FA.items()}
-
-WARN_LIMIT = 3
-
-# In-memory (not persisted — deliberately transient) per-(chat,user)
-# message timestamps for antiflood detection.
-FLOOD_TRACKER = {}
-
-
-def _parse_lock_name(raw):
-    raw = raw.strip().lower()
-    if raw in LOCK_NAMES:
-        return raw
-    return LOCK_ALIASES_FA.get(raw.strip())
-
-
-def get_group_settings(chat_id):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute("""
-            SELECT locks, welcome_enabled, welcome_text,
-                   antiflood_enabled, antiflood_limit, antiflood_window
-            FROM group_settings WHERE chat_id = %s
-        """, (chat_id,))
-
-        row = cur.fetchone()
-        cur.close()
-
-        if row:
-            locks, welcome_enabled, welcome_text, af_enabled, af_limit, af_window = row
-            return {
-                "locks": locks or {},
-                "welcome_enabled": bool(welcome_enabled),
-                "welcome_text": welcome_text,
-                "antiflood_enabled": bool(af_enabled),
-                "antiflood_limit": af_limit or 5,
-                "antiflood_window": af_window or 10,
-            }
-
-        return {
-            "locks": {}, "welcome_enabled": False, "welcome_text": None,
-            "antiflood_enabled": False, "antiflood_limit": 5, "antiflood_window": 10,
-        }
-
-    finally:
-
-        put_conn(conn)
-
-
-def set_lock_db(chat_id, lock_name, enabled):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO group_settings (chat_id, locks)
-            VALUES (%s, %s)
-            ON CONFLICT (chat_id) DO UPDATE SET
-                locks = COALESCE(group_settings.locks, '{}'::jsonb) || EXCLUDED.locks
-        """, (chat_id, Json({lock_name: enabled})))
-
-        conn.commit()
-        cur.close()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        put_conn(conn)
-
-
-def set_welcome_db(chat_id, enabled=None, text=None):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO group_settings (chat_id) VALUES (%s)
-            ON CONFLICT (chat_id) DO NOTHING
-        """, (chat_id,))
-
-        if enabled is not None:
-            cur.execute(
-                "UPDATE group_settings SET welcome_enabled = %s WHERE chat_id = %s",
-                (enabled, chat_id)
-            )
-
-        if text is not None:
-            cur.execute(
-                "UPDATE group_settings SET welcome_text = %s WHERE chat_id = %s",
-                (text, chat_id)
-            )
-
-        conn.commit()
-        cur.close()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        put_conn(conn)
-
-
-def set_antiflood_db(chat_id, enabled=None, limit=None, window=None):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO group_settings (chat_id) VALUES (%s)
-            ON CONFLICT (chat_id) DO NOTHING
-        """, (chat_id,))
-
-        if enabled is not None:
-            cur.execute(
-                "UPDATE group_settings SET antiflood_enabled = %s WHERE chat_id = %s",
-                (enabled, chat_id)
-            )
-
-        if limit is not None:
-            cur.execute(
-                "UPDATE group_settings SET antiflood_limit = %s WHERE chat_id = %s",
-                (limit, chat_id)
-            )
-
-        if window is not None:
-            cur.execute(
-                "UPDATE group_settings SET antiflood_window = %s WHERE chat_id = %s",
-                (window, chat_id)
-            )
-
-        conn.commit()
-        cur.close()
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        put_conn(conn)
-
-
-def add_filter_word_db(chat_id, word):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT 1 FROM filtered_words WHERE chat_id = %s AND LOWER(word) = LOWER(%s)",
-            (chat_id, word)
-        )
-
-        if cur.fetchone():
-            cur.close()
-            return False  # already filtered
-
-        cur.execute(
-            "INSERT INTO filtered_words (chat_id, word) VALUES (%s, %s)",
-            (chat_id, word)
-        )
-
-        conn.commit()
-        cur.close()
-
-        return True
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        put_conn(conn)
-
-
-def remove_filter_word_db(chat_id, word):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute(
-            "DELETE FROM filtered_words WHERE chat_id = %s AND LOWER(word) = LOWER(%s)",
-            (chat_id, word)
-        )
-
-        deleted = cur.rowcount
-        conn.commit()
-        cur.close()
-
-        return deleted > 0
-
-    finally:
-
-        put_conn(conn)
-
-
-def get_filtered_words_db(chat_id):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT word FROM filtered_words WHERE chat_id = %s",
-            (chat_id,)
-        )
-
-        words = [row[0] for row in cur.fetchall()]
-        cur.close()
-
-        return words
-
-    finally:
-
-        put_conn(conn)
-
-
-def warn_user_db(chat_id, user_id, delta):
-    """delta=+1 to add a warning, -1 to remove one. Returns new count."""
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute("""
-            INSERT INTO warnings (chat_id, user_id, count)
-            VALUES (%s, %s, GREATEST(%s, 0))
-            ON CONFLICT (chat_id, user_id) DO UPDATE SET
-                count = GREATEST(warnings.count + %s, 0)
-        """, (chat_id, user_id, delta, delta))
-
-        cur.execute(
-            "SELECT count FROM warnings WHERE chat_id = %s AND user_id = %s",
-            (chat_id, user_id)
-        )
-
-        count = cur.fetchone()[0]
-
-        conn.commit()
-        cur.close()
-
-        return count
-
-    except Exception:
-
-        conn.rollback()
-        raise
-
-    finally:
-
-        put_conn(conn)
-
-
-def get_warns_db(chat_id, user_id):
-
-    conn = get_conn()
-
-    try:
-
-        cur = conn.cursor()
-
-        cur.execute(
-            "SELECT count FROM warnings WHERE chat_id = %s AND user_id = %s",
-            (chat_id, user_id)
-        )
-
-        row = cur.fetchone()
-        cur.close()
-
-        return row[0] if row else 0
-
-    finally:
-
-        put_conn(conn)
-
-
-# =========================================================
-# ADMIN PERMISSION CHECK
-# =========================================================
-
-async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    user = update.effective_user
-    chat = update.effective_chat
-
-    if not user or not chat:
-        return False
-
-    if user.id == ADMIN_ID:
-        return True
-
-    if chat.type == "private":
-        return False
-
-    try:
-        member = await context.bot.get_chat_member(chat.id, user.id)
-        return member.status in ("administrator", "creator")
-    except Exception:
-        return False
-
-
-def _group_only_reply_target(update):
-    """Common pattern: these commands need a reply-to-message to
-    know who the target user is."""
-    if update.message.reply_to_message:
-        return update.message.reply_to_message.from_user
-    return None
-
-
-# =========================================================
-# USER MANAGEMENT: ban / unban / mute / unmute / kick / warn
-# =========================================================
-
-async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    try:
-        await context.bot.ban_chat_member(update.effective_chat.id, target.id)
-        await update.message.reply_text(f"🚫 {target.first_name} بن شد.")
-    except Exception as e:
-        await update.message.reply_text(
-            f"❌ نشد: {e}\nمطمئن شو ربات تو گروه ادمین کامله."
-        )
-
-
-async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    try:
-        await context.bot.unban_chat_member(
-            update.effective_chat.id, target.id, only_if_banned=True
-        )
-        await update.message.reply_text(f"✅ {target.first_name} از بن خارج شد.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ نشد: {e}")
-
-
-async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text(
-            "❌ روی پیام کاربر Reply کن.\nمثال: /mute یا /mute 30 (۳۰ دقیقه)"
-        )
-        return
-
-    until_date = None
-
-    if context.args:
-        try:
-            minutes = int(context.args[0])
-            until_date = datetime.utcnow() + timedelta(minutes=minutes)
-        except ValueError:
-            pass
-
-    try:
-
-        kwargs = {"permissions": ChatPermissions(can_send_messages=False)}
-
-        if until_date:
-            kwargs["until_date"] = until_date
-
-        await context.bot.restrict_chat_member(
-            update.effective_chat.id, target.id, **kwargs
-        )
-
-        duration_text = f" برای {context.args[0]} دقیقه" if until_date else ""
-
-        await update.message.reply_text(
-            f"🔇 {target.first_name}{duration_text} سکوت شد."
-        )
-
-    except Exception as e:
-        await update.message.reply_text(
-            f"❌ نشد: {e}\nمطمئن شو ربات تو گروه ادمین کامله."
-        )
-
-
-async def unmute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    try:
-        await context.bot.restrict_chat_member(
-            update.effective_chat.id, target.id,
-            permissions=ChatPermissions(
-                can_send_messages=True,
-                can_send_other_messages=True,
-                can_add_web_page_previews=True,
-                can_send_polls=True,
-            )
-        )
-        await update.message.reply_text(f"🔊 سکوت {target.first_name} برداشته شد.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ نشد: {e}")
-
-
-async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    try:
-        chat_id = update.effective_chat.id
-        await context.bot.ban_chat_member(chat_id, target.id)
-        await context.bot.unban_chat_member(chat_id, target.id)
-        await update.message.reply_text(f"👢 {target.first_name} از گروه اخراج شد.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ نشد: {e}")
-
-
-async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    chat_id = update.effective_chat.id
-
-    count = await run_db(warn_user_db, chat_id, target.id, 1)
-
-    if count >= WARN_LIMIT:
-
-        try:
-            await context.bot.ban_chat_member(chat_id, target.id)
-            await run_db(warn_user_db, chat_id, target.id, -count)  # reset
-            await update.message.reply_text(
-                f"🚫 {target.first_name} به {WARN_LIMIT} اخطار رسید و بن شد."
-            )
-        except Exception as e:
-            await update.message.reply_text(f"⚠️ اخطار {count}/{WARN_LIMIT} ثبت شد ولی بن نشد: {e}")
-
-    else:
-
-        await update.message.reply_text(
-            f"⚠️ اخطار {count}/{WARN_LIMIT} به {target.first_name} داده شد."
-        )
-
-
-async def unwarn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    target = _group_only_reply_target(update)
-
-    if not target:
-        await update.message.reply_text("❌ روی پیام کاربر Reply کن.")
-        return
-
-    count = await run_db(warn_user_db, update.effective_chat.id, target.id, -1)
-
-    await update.message.reply_text(
-        f"✅ یه اخطار از {target.first_name} کم شد. الان: {count}/{WARN_LIMIT}"
-    )
-
-
-async def warns_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    target = _group_only_reply_target(update) or update.effective_user
-
-    count = await run_db(get_warns_db, update.effective_chat.id, target.id)
-
-    await update.message.reply_text(
-        f"⚠️ اخطارهای {target.first_name}: {count}/{WARN_LIMIT}"
-    )
-
-
-# =========================================================
-# LOCKS
-# =========================================================
-
-async def lock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "مثال: /lock link\n\nانواع قابل قفل:\n" +
-            "، ".join(LOCK_LABELS_FA.values())
-        )
-        return
-
-    lock_name = _parse_lock_name(" ".join(context.args))
-
-    if not lock_name:
-        await update.message.reply_text("❌ این نوع قفل رو نمی‌شناسم.")
-        return
-
-    await run_db(set_lock_db, update.effective_chat.id, lock_name, True)
-
-    await update.message.reply_text(f"🔒 قفل «{LOCK_LABELS_FA[lock_name]}» فعال شد.")
-
-
-async def unlock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text("مثال: /unlock link")
-        return
-
-    lock_name = _parse_lock_name(" ".join(context.args))
-
-    if not lock_name:
-        await update.message.reply_text("❌ این نوع قفل رو نمی‌شناسم.")
-        return
-
-    await run_db(set_lock_db, update.effective_chat.id, lock_name, False)
-
-    await update.message.reply_text(f"🔓 قفل «{LOCK_LABELS_FA[lock_name]}» باز شد.")
-
-
-async def locks_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    settings = await run_db(get_group_settings, update.effective_chat.id)
-    locks = settings["locks"]
-
-    text = "🔒 وضعیت قفل‌ها:\n\n"
-
-    for name in LOCK_NAMES:
-        status = "🟢 فعال" if locks.get(name) else "🔴 غیرفعال"
-        text += f"{LOCK_LABELS_FA[name]}: {status}\n"
-
-    await update.message.reply_text(text)
-
-
-# =========================================================
-# WORD FILTER
-# =========================================================
-
-async def filter_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text("مثال: /filter کلمه_بد")
-        return
-
-    word = " ".join(context.args)
-
-    added = await run_db(add_filter_word_db, update.effective_chat.id, word)
-
-    if added:
-        await update.message.reply_text(f"✅ «{word}» به فیلتر اضافه شد.")
-    else:
-        await update.message.reply_text("این کلمه از قبل فیلتر بود.")
-
-
-async def unfilter_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text("مثال: /unfilter کلمه_بد")
-        return
-
-    word = " ".join(context.args)
-
-    removed = await run_db(remove_filter_word_db, update.effective_chat.id, word)
-
-    if removed:
-        await update.message.reply_text(f"✅ «{word}» از فیلتر حذف شد.")
-    else:
-        await update.message.reply_text("این کلمه تو لیست فیلتر نبود.")
-
-
-async def filters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    words = await run_db(get_filtered_words_db, update.effective_chat.id)
-
-    if not words:
-        await update.message.reply_text("هیچ کلمه‌ای فیلتر نشده.")
-        return
-
-    await update.message.reply_text(
-        "🚫 کلمات فیلترشده:\n\n" + "\n".join(f"- {w}" for w in words)
-    )
-
-
-# =========================================================
-# WELCOME MESSAGE
-# =========================================================
-
-async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "مثال:\n/setwelcome سلام {name} خوش اومدی!\n\n"
-            "{name} با اسم کاربر جایگزین می‌شه."
-        )
-        return
-
-    text = " ".join(context.args)
-
-    await run_db(set_welcome_db, update.effective_chat.id, None, text)
-
-    await update.message.reply_text("✅ پیام خوش‌آمدگویی تنظیم شد.")
-
-
-async def welcome_toggle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args or context.args[0] not in ("on", "off", "روشن", "خاموش"):
-        await update.message.reply_text("مثال: /welcome on یا /welcome off")
-        return
-
-    enabled = context.args[0] in ("on", "روشن")
-
-    await run_db(set_welcome_db, update.effective_chat.id, enabled, None)
-
-    await update.message.reply_text(
-        "✅ خوشامدگویی فعال شد." if enabled else "✅ خوشامدگویی غیرفعال شد."
-    )
-
-
-async def welcome_new_members(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    chat = update.effective_chat
-
-    if not update.message or not update.message.new_chat_members:
-        return
-
-    settings = await run_db(get_group_settings, chat.id)
-
-    if not settings["welcome_enabled"]:
-        return
-
-    template = settings["welcome_text"] or "سلام {name}! خوش اومدی 🎉"
-
-    for member in update.message.new_chat_members:
-
-        if member.is_bot:
-            continue
-
-        name = member.first_name or member.username or "کاربر"
-        text = template.replace("{name}", name)
-
-        try:
-            await context.bot.send_message(chat.id, text)
-        except Exception:
-            logger.exception("Welcome message send error")
-
-
-# =========================================================
-# ANTIFLOOD
-# =========================================================
-
-async def antiflood_toggle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if not context.args or context.args[0] not in ("on", "off", "روشن", "خاموش"):
-        await update.message.reply_text(
-            "مثال: /antiflood on یا /antiflood off\n"
-            "برای تنظیم حساسیت: /setflood 5 10 "
-            "(بیشتر از ۵ پیام تو ۱۰ ثانیه = سکوت ۵ دقیقه‌ای)"
-        )
-        return
-
-    enabled = context.args[0] in ("on", "روشن")
-
-    await run_db(set_antiflood_db, update.effective_chat.id, enabled, None, None)
-
-    await update.message.reply_text(
-        "✅ ضدفلود فعال شد." if enabled else "✅ ضدفلود غیرفعال شد."
-    )
-
-
-async def setflood_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not await is_group_admin(update, context):
-        return
-
-    if len(context.args) < 2:
-        await update.message.reply_text("مثال: /setflood 5 10")
-        return
-
-    try:
-        limit = int(context.args[0])
-        window = int(context.args[1])
-    except ValueError:
-        await update.message.reply_text("❌ هردو مقدار باید عدد باشن.")
-        return
-
-    await run_db(set_antiflood_db, update.effective_chat.id, None, limit, window)
-
-    await update.message.reply_text(
-        f"✅ تنظیم شد: بیشتر از {limit} پیام تو {window} ثانیه = سکوت."
-    )
-
-
-# =========================================================
-# MODERATION MESSAGE HANDLER (locks + filter + antiflood)
-# Runs in an earlier handler group (-1) so it can stop further
-# processing (e.g. coin-earning) when it deletes a message.
-# =========================================================
-
-async def moderation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    message = update.effective_message
-    chat = update.effective_chat
-    user = update.effective_user
-
-    if not message or not chat or chat.type not in ("group", "supergroup"):
-        return
-
-    if not user or user.is_bot:
-        return
-
-    # never moderate group admins (or this bot's own admin)
-    if await is_group_admin(update, context):
-        return
-
-    settings = await run_db(get_group_settings, chat.id)
-    locks = settings["locks"] or {}
-
-    violated = None
-
-    if locks.get("link"):
-        if message.entities:
-            for ent in message.entities:
-                if ent.type in ("url", "text_link"):
-                    violated = "link"
-                    break
-        if not violated and message.text and re.search(
-            r"https?://|t\.me/|www\.", message.text, re.IGNORECASE
-        ):
-            violated = "link"
-
-    if not violated and locks.get("forward") and (
-        getattr(message, "forward_date", None) or getattr(message, "forward_origin", None)
-    ):
-        violated = "forward"
-
-    if not violated and locks.get("username") and message.entities:
-        for ent in message.entities:
-            if ent.type == "mention":
-                violated = "username"
-                break
-
-    if not violated and locks.get("photo") and message.photo:
-        violated = "photo"
-    if not violated and locks.get("video") and message.video:
-        violated = "video"
-    if not violated and locks.get("sticker") and message.sticker:
-        violated = "sticker"
-    if not violated and locks.get("gif") and message.animation:
-        violated = "gif"
-    if not violated and locks.get("voice") and (message.voice or message.audio):
-        violated = "voice"
-    if not violated and locks.get("document") and message.document:
-        violated = "document"
-    if not violated and locks.get("location") and message.location:
-        violated = "location"
-    if not violated and locks.get("poll") and message.poll:
-        violated = "poll"
-    if not violated and locks.get("contact") and message.contact:
-        violated = "contact"
-
-    if not violated and message.text:
-
-        words = await run_db(get_filtered_words_db, chat.id)
-        text_lower = message.text.lower()
-
-        for w in words:
-            if w.lower() in text_lower:
-                violated = "filter"
-                break
-
-    if violated:
-
-        try:
-            await message.delete()
-        except Exception:
-            logger.warning("Could not delete message for lock '%s'", violated)
-
-        raise ApplicationHandlerStop
-
-    # ---- antiflood ----
-
-    if settings["antiflood_enabled"]:
-
-        key = (chat.id, user.id)
-        now = time.time()
-        window = settings["antiflood_limit"] and settings["antiflood_window"] or 10
-        limit = settings["antiflood_limit"] or 5
-
-        timestamps = FLOOD_TRACKER.setdefault(key, [])
-        timestamps.append(now)
-        timestamps = [t for t in timestamps if now - t <= window]
-        FLOOD_TRACKER[key] = timestamps
-
-        if len(timestamps) > limit:
-
-            FLOOD_TRACKER[key] = []
-
-            try:
-                await context.bot.restrict_chat_member(
-                    chat.id, user.id,
-                    permissions=ChatPermissions(can_send_messages=False),
-                    until_date=datetime.utcnow() + timedelta(minutes=5)
-                )
-                await message.reply_text(
-                    f"🔇 {user.first_name} به‌خاطر پیام رگباری ۵ دقیقه سکوت شد."
-                )
-            except Exception:
-                logger.warning("Antiflood restrict failed")
-
-
-
-# =========================================================
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error("Telegram error: %s", context.error)
-
-
-# =========================================================
-# FLASK SERVER
-# =========================================================
-
-def run_flask():
-    # CHANGE: threaded=True so a slow DB call from the game-score
-    # endpoint doesn't block /health pings (which is what an uptime
-    # monitor needs to keep Render's free instance awake).
-    web.run(
-        host="0.0.0.0",
-        port=PORT,
-        use_reloader=False,
-        threaded=True
-    )
-
-
-# =========================================================
-# SELF-PING (keeps Render's free instance from sleeping)
-# =========================================================
-# Render's free tier puts the service to sleep after ~15 minutes
-# with no inbound HTTP traffic. A Telegram message sent/deleted by
-# the bot doesn't count as HTTP traffic to the service, so it can't
-# prevent sleep. Instead, this background thread hits the service's
-# own /health endpoint every 2 minutes, which DOES count.
-#
-# Render sets RENDER_EXTERNAL_URL automatically for web services;
-# we fall back to localhost if it's not present (e.g. running
-# locally).
-
-def self_ping_loop():
-
-    import urllib.request
-
-    base_url = os.environ.get("RENDER_EXTERNAL_URL", f"http://127.0.0.1:{PORT}")
-    url = base_url.rstrip("/") + "/health"
-
-    while True:
-
-        time.sleep(120)  # 2 minutes
-
-        try:
-            urllib.request.urlopen(url, timeout=10)
-            logger.info("Self-ping OK (%s)", url)
-        except Exception as e:
-            logger.warning("Self-ping failed: %s", e)
-
-
-# =========================================================
-# MAIN
-# =========================================================
-
-def main():
-
-    init_db()
-
-    Thread(target=run_flask, daemon=True).start()
-    Thread(target=self_ping_loop, daemon=True).start()
-
-    async def on_startup(app):
-        # Runs once, inside the same event loop run_polling uses.
-        # Schedules the background price-fluctuation loop without
-        # needing the JobQueue/APScheduler extra.
-        asyncio.create_task(market_price_updater_loop(app))
-
-    application = (
-        Application
-        .builder()
-        .token(TOKEN)
-        .post_init(on_startup)
-        .build()
-    )
-
-    # BASIC
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("balance", balance))
-    application.add_handler(CommandHandler("top", top))
-    application.add_handler(CommandHandler("pay", pay))
-
-    # ADMIN
-    application.add_handler(CommandHandler("addcoins", addcoins_command))
-    application.add_handler(CommandHandler("removecoins", removecoins_command))
-    application.add_handler(CommandHandler("addall", addall))
-    application.add_handler(CommandHandler("playerstats", playerstats))
-    application.add_handler(CommandHandler("say", say))
-    application.add_handler(CommandHandler("groupmsg", groupmsg))
-    application.add_handler(CommandHandler("setgroup", setgroup))
-
-    # QUIZ
-    application.add_handler(CommandHandler("quiz", quiz))
-    application.add_handler(CommandHandler("quizscore", quizscore))
-    application.add_handler(CommandHandler("quiztop", quiztop))
-    application.add_handler(CommandHandler("addquestion", addquestion))
-    application.add_handler(CommandHandler("questions", questions))
-    application.add_handler(CommandHandler("delquestion", delquestion))
-    application.add_handler(CommandHandler("enablequestion", enablequestion))
-    application.add_handler(CommandHandler("disablequestion", disablequestion))
-    application.add_handler(PollAnswerHandler(poll_answer))
-
-    # MARKET
-    application.add_handler(CommandHandler("market", market))
-    application.add_handler(CommandHandler("buy", buy))
-    application.add_handler(CommandHandler("sell", sell))
-    application.add_handler(CommandHandler("portfolio", portfolio))
-    application.add_handler(CommandHandler("setmarketgroup", setmarketgroup))
-    application.add_handler(CommandHandler("unsetmarketgroup", unsetmarketgroup))
-    application.add_handler(CommandHandler("setprice", setprice))
-    application.add_handler(CommandHandler("updateprice", updateprice_command))
-    application.add_handler(CommandHandler("panel", panel_command))
-    application.add_handler(CallbackQueryHandler(panel_callback, pattern="^panel_"))
-
-    # GAME
-    application.add_handler(CommandHandler("play", play))
-    application.add_handler(CommandHandler("gamestats", gamestats))
-    application.add_handler(CommandHandler("gametop", gametop))
-
-    # GROUP MODERATION
-    application.add_handler(CommandHandler("ban", ban_command))
-    application.add_handler(CommandHandler("unban", unban_command))
-    application.add_handler(CommandHandler("mute", mute_command))
-    application.add_handler(CommandHandler("unmute", unmute_command))
-    application.add_handler(CommandHandler("kick", kick_command))
-    application.add_handler(CommandHandler("warn", warn_command))
-    application.add_handler(CommandHandler("unwarn", unwarn_command))
-    application.add_handler(CommandHandler("warns", warns_command))
-    application.add_handler(CommandHandler("lock", lock_command))
-    application.add_handler(CommandHandler("unlock", unlock_command))
-    application.add_handler(CommandHandler("locks", locks_command))
-    application.add_handler(CommandHandler("filter", filter_command))
-    application.add_handler(CommandHandler("unfilter", unfilter_command))
-    application.add_handler(CommandHandler("filters", filters_command))
-    application.add_handler(CommandHandler("setwelcome", setwelcome_command))
-    application.add_handler(CommandHandler("welcome", welcome_toggle_command))
-    application.add_handler(CommandHandler("antiflood", antiflood_toggle_command))
-    application.add_handler(CommandHandler("setflood", setflood_command))
-
-    application.add_handler(
-        MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_members)
-    )
-
-    # Runs in group -1 (before everything else) so it can delete a
-    # locked/filtered message and stop it from also being processed
-    # by the coin-earning text handler below.
-    application.add_handler(
-        MessageHandler(filters.ALL & ~filters.COMMAND, moderation_handler),
-        group=-1
-    )
-
-    # TEXT
-    application.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
-
-    # ERRORS
-    application.add_error_handler(error_handler)
-
-    logger.info("Bot starting...")
-
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-if __name__ == "__main__":
-    main()
+    "location": "

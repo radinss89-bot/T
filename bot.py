@@ -952,8 +952,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await run_db(ensure_user, user)
 
     await update.message.reply_text(
-        "🐦 سلام!\n\n"
-        "🪙 ربات کوین فعاله.\n\n"
+        "😈 سلام!\n\n"
+        "🤑 ربات کوین فعاله.\n\n"
         "💰 /balance\n"
         "🏆 /top\n"
         "💸 /pay 100 (با Reply)\n"
@@ -961,7 +961,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📈 /market\n"
         "🎮 /play\n"
         "🎮 /gamestats\n"
-        "❓ /help"
+        "❓ /help\n\n"
+        "🦅 برای گرفتن کوین بنویس «جیک» ☠️"
     )
 
 
@@ -1032,10 +1033,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/addreply کلمه | پاسخ /delreply کلمه /replies\n"
         "/mypanel — خلاصه‌ی وضعیت خودت\n"
         "/panel — منوی کامل با دکمه‌های شیشه‌ای\n\n"
-        "🐦 برای گرفتن کوین هم بنویس:\n"
-        "فولک\n"
-        "یا\n"
-        "هاپهاپ کوین\n\n"
+        "🦅 برای گرفتن کوین هم بنویس:\n"
+        "جیک ☠️\n\n"
         "📝 دستورات فارسی (بدون /):\n"
         "موجودی، برترین، بورس، پرتفوی، "
         "خرید 10، فروش 10، کوییز، راهنما، پنل\n\n"
@@ -1298,7 +1297,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(auto_reply)
             return
 
-    if text not in ["فولک", "هاپهاپ کوین"]:
+    if "جیک" not in text:
         return
 
     now = time.time()
@@ -1308,7 +1307,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if status == "awarded":
 
         await update.message.reply_text(
-            f"🪙 +{COINS_PER_MESSAGE} کوین گرفتی!"
+            f"😈 +{COINS_PER_MESSAGE} کوین گرفتی! 🤑"
         )
 
     elif status == "cooldown":
@@ -1317,7 +1316,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         seconds = remaining % 60
 
         await update.message.reply_text(
-            f"⏳ هنوز زوده!\n"
+            f"🥶 هنوز زوده!\n"
             f"{minutes} دقیقه و {seconds} ثانیه دیگه امتحان کن."
         )
 
@@ -2697,7 +2696,7 @@ def _buy_db(user_id, amount):
         cur.close()
 
         return True, (
-            f"✅ خرید انجام شد!\n\n🪙 مقدار: {amount}\n💰 هزینه: {total_cost}"
+            f"🤑 خرید انجام شد!\n\n🪙 مقدار: {amount}\n💰 هزینه: {total_cost}"
         )
 
     except Exception:
@@ -2794,7 +2793,7 @@ def _sell_db(user_id, amount):
         cur.close()
 
         return True, (
-            f"✅ فروش انجام شد!\n\n🪙 مقدار: {amount}\n💰 دریافتی: {value}"
+            f"🥵 فروش انجام شد!\n\n🪙 مقدار: {amount}\n💰 دریافتی: {value}"
         )
 
     except Exception:
@@ -3180,7 +3179,7 @@ PANEL_CONTENT = {
         "🎮 سرگرمی و کاربردی\n\n"
         "/quiz — سوال کوییز\n"
         "/play — بازی AngryCoin (Web App)\n"
-        "برای گرفتن کوین هم بنویس «فولک»"
+        "برای گرفتن کوین هم بنویس «جیک» 🦅"
     ),
     "panel_promote": (
         "⬆️ ارتقا و عزل کاربران\n\n"
@@ -4171,7 +4170,7 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.ban_chat_member(update.effective_chat.id, target.id)
-        await update.message.reply_text(f"🚫 {target.first_name} بن شد.")
+        await update.message.reply_text(f"☠️ {target.first_name} بن شد.")
     except Exception as e:
         await update.message.reply_text(
             f"❌ نشد: {e}\nمطمئن شو ربات تو گروه ادمین کامله."
@@ -4234,7 +4233,7 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         duration_text = f" برای {context.args[0]} دقیقه" if until_date else ""
 
         await update.message.reply_text(
-            f"🔇 {target.first_name}{duration_text} سکوت شد."
+            f"🥶 {target.first_name}{duration_text} سکوت شد."
         )
 
     except Exception as e:
@@ -4284,7 +4283,7 @@ async def kick_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
         await context.bot.ban_chat_member(chat_id, target.id)
         await context.bot.unban_chat_member(chat_id, target.id)
-        await update.message.reply_text(f"👢 {target.first_name} از گروه اخراج شد.")
+        await update.message.reply_text(f"😈 {target.first_name} از گروه اخراج شد.")
     except Exception as e:
         await update.message.reply_text(f"❌ نشد: {e}")
 
@@ -4310,7 +4309,7 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.ban_chat_member(chat_id, target.id)
             await run_db(warn_user_db, chat_id, target.id, -count)  # reset
             await update.message.reply_text(
-                f"🚫 {target.first_name} به {WARN_LIMIT} اخطار رسید و بن شد."
+                f"☠️ {target.first_name} به {WARN_LIMIT} اخطار رسید و بن شد."
             )
         except Exception as e:
             await update.message.reply_text(f"⚠️ اخطار {count}/{WARN_LIMIT} ثبت شد ولی بن نشد: {e}")

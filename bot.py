@@ -5300,7 +5300,7 @@ async def mypanel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text)
 
 
-async def moderation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _moderation_handler_body(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = update.effective_message
     chat = update.effective_chat
@@ -5470,6 +5470,25 @@ async def moderation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
             except Exception:
                 logger.warning("Antiflood restrict failed")
+
+
+async def moderation_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Thin wrapper: runs in group=-1, before every other handler.
+    If anything inside _moderation_handler_body throws (a DB hiccup,
+    a Telegram API quirk, etc.), we must NOT let that exception take
+    down processing of the rest of the update — otherwise a single
+    bug here could make the whole bot look dead in every group.
+    ApplicationHandlerStop is intentional control flow (used to stop
+    a locked/blocked message from reaching other handlers) and must
+    still propagate; everything else is caught and logged instead.
+    """
+
+    try:
+        await _moderation_handler_body(update, context)
+    except ApplicationHandlerStop:
+        raise
+    except Exception:
+        logger.exception("moderation_handler crashed — letting the message through")
 
 
 

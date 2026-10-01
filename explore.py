@@ -8,6 +8,7 @@ explore.py — سیستم اکسپلور برای ربات
 
 نیازمندی: python-telegram-bot v20+ ، Flask ، psycopg2
 """
+import asyncio
 import logging
 import re
 from urllib.parse import parse_qs, urlparse
@@ -69,11 +70,12 @@ def parse_video(url: str):
 
 
 # ───────────────────────── ثبت در ربات و Flask ─────────────────────────
-def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: str):
+def register_explore(ptb_app, flask_app, get_conn, put_conn, admin_id: int, explore_url: str):
     """
     ptb_app     : همون Application ربات (python-telegram-bot)
     flask_app   : همون Flask app (که /game-score روش هست)
-    get_conn    : تابعی که یه اتصال psycopg2 برمی‌گردونه
+    get_conn    : تابعی که یه اتصال از pool می‌گیره
+    put_conn    : تابعی که اتصال رو به pool برمی‌گردونه
     admin_id    : آیدی عددی ادمین
     explore_url : آدرس صفحه‌ی explore.html (مینی‌اپ)
     """
@@ -86,10 +88,11 @@ def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: s
                     cur.execute(sql, params)
                     return cur.fetchall() if fetch else None
         finally:
-            try:
-                conn.close()  # اگه get_conn از pool میاد، این خط رو بردار
-            except Exception:
-                pass
+            put_conn(conn)
+
+    async def aq(*args, **kwargs):
+        # مثل run_db تو کد اصلی: کوئری رو تو ترد جدا اجرا می‌کنه
+        return await asyncio.to_thread(q, *args, **kwargs)
 
     q(
         """
@@ -144,7 +147,7 @@ def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: s
         is_admin = user.id == admin_id
         status = "approved" if is_admin else "pending"
 
-        rows = q(
+        rows = await aq(
             """
             INSERT INTO explore_videos (url, kind, ref, submitted_by, submitter_name, status)
             VALUES (%s, %s, %s, %s, %s, %s)
@@ -181,7 +184,7 @@ def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: s
             return
         _, act, vid = cq.data.split(":")
         status = "approved" if act == "ok" else "rejected"
-        rows = q(
+        rows = await aq(
             "UPDATE explore_videos SET status=%s WHERE id=%s RETURNING submitted_by",
             (status, int(vid)),
             fetch=True,
@@ -206,7 +209,7 @@ def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: s
     async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id != admin_id:
             return
-        rows = q(
+        rows = await aq(
             "SELECT id, kind, url, submitter_name FROM explore_videos "
             "WHERE status='pending' ORDER BY id LIMIT 10",
             fetch=True,
@@ -250,12 +253,6 @@ def register_explore(ptb_app, flask_app, get_conn, admin_id: int, explore_url: s
     )
 
     # ───── API برای مینی‌اپ ─────
-    @flask_app.after_request
-    def explore_cors(resp):
-        if request.path.startswith("/explore/"):
-            resp.headers["Access-Control-Allow-Origin"] = "*"
-        return resp
-
     @flask_app.get("/explore/feed")
     def explore_feed():
         before = request.args.get("before", type=int)
